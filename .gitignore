@@ -1,0 +1,59 @@
+# Compilaciones de C++
+backend/build/
+backend/out/
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.pdb
+
+# Dependencias de C++
+vcpkg_installed/
+.vscode/
+.idea/
+.vs/
+
+# Dependencias y compilaciones del frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Variables de entorno y secretos
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Datos generados durante la ejecución
+runtime-data/databases/*
+runtime-data/system-catalog/*
+!runtime-data/databases/.gitkeep
+!runtime-data/system-catalog/.gitkeep
+
+# Archivos temporales y del sistema
+*.tmp
+*.temp
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Cobertura y resultados de pruebas
+coverage/
+Testing/
+test-results/
