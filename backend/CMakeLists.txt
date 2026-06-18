@@ -10,8 +10,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Busca Crow entre las dependencias instaladas por vcpkg.
 find_package(Crow CONFIG REQUIRED)
 
-# Esta biblioteca contiene los tipos compartidos por las capas del backend.
+# Esta biblioteca contiene los tipos y modelos compartidos por el backend.
 add_library(TinySQLCore
+    src/core/DataType.cpp
     src/core/TinySqlError.cpp
 )
 
@@ -38,3 +39,4 @@ target_compile_definitions(TinySQLServer
     PRIVATE
         _WIN32_WINNT=0x0A00
 )
+
