@@ -2,18 +2,39 @@ cmake_minimum_required(VERSION 3.21)
 
 project(TinySQLDb VERSION 0.1 LANGUAGES CXX)
 
-# El backend utilizará C++17 en todos sus archivos.
+# Todo el backend se compilará utilizando C++17.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Busca la biblioteca Crow instalada por vcpkg.
+# Busca Crow entre las dependencias instaladas por vcpkg.
 find_package(Crow CONFIG REQUIRED)
 
-# Crea el ejecutable principal del servidor.
+# Esta biblioteca contiene los tipos compartidos por las capas del backend.
+add_library(TinySQLCore
+    src/core/TinySqlError.cpp
+)
+
+# Permite incluir archivos utilizando rutas como core/TinySqlError.hpp.
+target_include_directories(TinySQLCore
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Este es el ejecutable encargado de iniciar el servidor HTTP.
 add_executable(TinySQLServer
     src/main.cpp
 )
 
-# Permite que el servidor utilice Crow y sus dependencias.
-target_link_libraries(TinySQLServer PRIVATE Crow::Crow)
+# El servidor puede utilizar Crow y los elementos compartidos del módulo core.
+target_link_libraries(TinySQLServer
+    PRIVATE
+        Crow::Crow
+        TinySQLCore
+)
+
+# Indica que el servidor utiliza como mínimo las funciones disponibles en Windows 10.
+target_compile_definitions(TinySQLServer
+    PRIVATE
+        _WIN32_WINNT=0x0A00
+)
