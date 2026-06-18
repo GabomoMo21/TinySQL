@@ -5,7 +5,7 @@ TinySQLDb es un motor de bases de datos relacional sencillo desarrollado para el
 ## Integrantes
 
 - Gabriel Morales Orozco
-- [Nombre del segundo integrante]
+- Olman Sibaja Ramos
 
 ## Objetivo
 
@@ -27,28 +27,13 @@ MySQL se utilizará únicamente como referencia para estudiar el comportamiento 
 ## Estructura del repositorio
 
 ```text
-TinySQLDb/
+TinySQL/
 ├── backend/
-│   ├── apps/
-│   ├── libs/
+│   ├── include/
+│   ├── src/
 │   └── tests/
 ├── frontend/
-├── runtime-data/
+├── data/
 ├── scripts/
 ├── docs/
 └── .github/
-```
-
-## Documentación inicial
-
-- `docs/requirements-decisions.md`: requisitos, interpretaciones y preguntas pendientes.
-- `docs/mysql-reference.md`: comportamiento observado en MySQL.
-- `docs/git-workflow.md`: flujo de trabajo con Git y GitHub.
-- `docs/backlog.md`: lista inicial de trabajo del proyecto.
-- `docs/repository-setup.md`: configuración inicial del repositorio.
-
-## Estado actual
-
-Fase A: definición del proyecto y preparación del repositorio.
-
-Todavía no se ha implementado código del motor.
