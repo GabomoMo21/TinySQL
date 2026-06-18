@@ -15,6 +15,7 @@ add_library(TinySQLCore
     src/core/DataType.cpp
     src/core/DateTime.cpp
     src/core/TinySqlError.cpp
+    src/core/Value.cpp
 )
 
 # Permite incluir archivos utilizando rutas como core/TinySqlError.hpp.
