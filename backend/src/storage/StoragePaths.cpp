@@ -34,11 +34,22 @@ namespace tinysql
         return getSystemCatalogPath() / "SystemDatabases";
     }
 
-    // Crea las carpetas necesarias si todavía no existen.
-    void StoragePaths::ensureDirectoriesExist() const
+    // Devuelve la ubicación del archivo que registra las tablas existentes.
+    std::filesystem::path StoragePaths::getSystemTablesFilePath() const
     {
-        std::filesystem::create_directories(getDatabasesPath());
-        std::filesystem::create_directories(getSystemCatalogPath());
+        return getSystemCatalogPath() / "SystemTables";
+    }
+
+    // Devuelve la ubicación del archivo que registra las columnas de cada tabla.
+    std::filesystem::path StoragePaths::getSystemColumnsFilePath() const
+    {
+        return getSystemCatalogPath() / "SystemColumns";
+    }
+
+    // Devuelve la ubicación del archivo que registra los índices existentes.
+    std::filesystem::path StoragePaths::getSystemIndexesFilePath() const
+    {
+        return getSystemCatalogPath() / "SystemIndexes";
     }
 
     // Construye la ruta de una base de datos específica.
@@ -47,5 +58,21 @@ namespace tinysql
     ) const
     {
         return getDatabasesPath() / databaseName;
+    }
+
+    // Construye la ruta física del archivo binario de una tabla.
+    std::filesystem::path StoragePaths::getTableFilePath(
+        const std::string& databaseName,
+        const std::string& tableName
+    ) const
+    {
+        return getDatabasePath(databaseName) / (tableName + ".tbl");
+    }
+
+    // Crea las carpetas necesarias si todavía no existen.
+    void StoragePaths::ensureDirectoriesExist() const
+    {
+        std::filesystem::create_directories(getDatabasesPath());
+        std::filesystem::create_directories(getSystemCatalogPath());
     }
 }
