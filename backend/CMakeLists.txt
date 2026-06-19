@@ -13,6 +13,7 @@ find_package(Crow CONFIG REQUIRED)
 # Esta biblioteca contiene los tipos y modelos compartidos por el backend.
 add_library(TinySQLCore
     src/core/ColumnMetadata.cpp
+    src/core/DatabaseMetadata.cpp
     src/core/DataType.cpp
     src/core/DateTime.cpp
     src/core/TableMetadata.cpp
