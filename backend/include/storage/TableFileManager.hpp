@@ -1,15 +1,18 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 #include "core/ColumnMetadata.hpp"
 #include "core/TableMetadata.hpp"
+#include "core/Value.hpp"
 #include "storage/StoragePaths.hpp"
 
 namespace tinysql
 {
-    // Administra los archivos físicos asociados a las tablas de una base de datos.
+    // Administra la creación y el acceso físico a los archivos de las tablas.
     class TableFileManager
     {
     public:
@@ -31,9 +34,26 @@ namespace tinysql
             const TableMetadata& table
         ) const;
 
+        // Agrega un registro y devuelve la posición donde empieza en el archivo.
+        std::uint64_t appendRecord(
+            const std::string& databaseName,
+            const TableMetadata& table,
+            const std::vector<Value>& values
+        ) const;
+
     private:
         std::uint32_t calculateColumnSize(
             const ColumnMetadata& column
+        ) const;
+
+        std::vector<std::uint8_t> serializeRecord(
+            const TableMetadata& table,
+            const std::vector<Value>& values
+        ) const;
+
+        void validateTableHeader(
+            const std::filesystem::path& filePath,
+            const TableMetadata& table
         ) const;
 
         const StoragePaths& storagePaths_;

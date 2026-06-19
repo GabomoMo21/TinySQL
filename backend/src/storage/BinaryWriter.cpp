@@ -95,4 +95,28 @@ namespace tinysql
             );
         }
     }
+
+    // Escribe un bloque de memoria sin agregar longitud ni información adicional.
+    void BinaryWriter::writeBytes(
+        const void* data,
+        std::size_t size
+    )
+    {
+        if (size == 0)
+        {
+            return;
+        }
+
+        file_.write(
+            static_cast<const char*>(data),
+            static_cast<std::streamsize>(size)
+        );
+
+        if (!file_)
+        {
+            throw std::runtime_error(
+                "No se pudo escribir el bloque en el archivo binario."
+            );
+        }
+    }
 }

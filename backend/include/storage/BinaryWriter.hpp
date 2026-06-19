@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -7,7 +8,7 @@
 
 namespace tinysql
 {
-    // Permite escribir valores básicos dentro de un archivo binario.
+    // Permite escribir valores básicos y bloques dentro de un archivo binario.
     class BinaryWriter
     {
     public:
@@ -19,6 +20,11 @@ namespace tinysql
         void writeUInt32(std::uint32_t value);
         void writeBool(bool value);
         void writeString(const std::string& value);
+
+        void writeBytes(
+            const void* data,
+            std::size_t size
+        );
 
     private:
         std::ofstream file_;

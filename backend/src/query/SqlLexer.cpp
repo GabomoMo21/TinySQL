@@ -17,10 +17,12 @@ namespace tinysql
         {
             const char currentCharacter = statement[position];
 
-            // Los espacios solo separan tokens y no se guardan.
-            if (std::isspace(
-                static_cast<unsigned char>(currentCharacter)
-            ))
+            // Los espacios separan tokens, excepto cuando están dentro de un string.
+            if (
+                std::isspace(
+                    static_cast<unsigned char>(currentCharacter)
+                )
+                )
             {
                 ++position;
                 continue;
@@ -66,23 +68,131 @@ namespace tinysql
                 continue;
             }
 
-            // Los números se usan por ahora para VARCHAR(length).
-            if (std::isdigit(
-                static_cast<unsigned char>(currentCharacter)
-            ))
+            // Los textos pueden escribirse con comillas simples o dobles.
+            if (
+                currentCharacter == '"' ||
+                currentCharacter == '\''
+                )
             {
-                const std::size_t startPosition = position;
+                const char quote = currentCharacter;
+                std::string value;
 
                 ++position;
 
                 while (
                     position < statement.size() &&
+                    statement[position] != quote
+                    )
+                {
+                    // Permite incluir la comilla utilizada o una barra invertida.
+                    if (
+                        statement[position] == '\\' &&
+                        position + 1 < statement.size()
+                        )
+                    {
+                        const char escapedCharacter =
+                            statement[position + 1];
+
+                        if (
+                            escapedCharacter == quote ||
+                            escapedCharacter == '\\'
+                            )
+                        {
+                            value.push_back(escapedCharacter);
+                            position += 2;
+                            continue;
+                        }
+                    }
+
+                    value.push_back(statement[position]);
+                    ++position;
+                }
+
+                if (position >= statement.size())
+                {
+                    throw std::runtime_error(
+                        "El texto no tiene una comilla de cierre."
+                    );
+                }
+
+                ++position;
+
+                tokens.push_back(
+                    { TokenType::StringLiteral, value }
+                );
+
+                continue;
+            }
+
+            // Los números pueden ser enteros, decimales y negativos.
+            const bool startsWithDigit =
+                std::isdigit(
+                    static_cast<unsigned char>(currentCharacter)
+                );
+
+            const bool startsWithNegativeSign =
+                currentCharacter == '-' &&
+                position + 1 < statement.size() &&
+                std::isdigit(
+                    static_cast<unsigned char>(
+                        statement[position + 1]
+                        )
+                );
+
+            if (startsWithDigit || startsWithNegativeSign)
+            {
+                const std::size_t startPosition = position;
+
+                if (statement[position] == '-')
+                {
+                    ++position;
+                }
+
+                while (
+                    position < statement.size() &&
                     std::isdigit(
-                        static_cast<unsigned char>(statement[position])
+                        static_cast<unsigned char>(
+                            statement[position]
+                            )
                     )
                     )
                 {
                     ++position;
+                }
+
+                // El punto decimal es opcional, pero debe tener dígitos después.
+                if (
+                    position < statement.size() &&
+                    statement[position] == '.'
+                    )
+                {
+                    ++position;
+
+                    if (
+                        position >= statement.size() ||
+                        !std::isdigit(
+                            static_cast<unsigned char>(
+                                statement[position]
+                                )
+                        )
+                        )
+                    {
+                        throw std::runtime_error(
+                            "El numero decimal no tiene un formato valido."
+                        );
+                    }
+
+                    while (
+                        position < statement.size() &&
+                        std::isdigit(
+                            static_cast<unsigned char>(
+                                statement[position]
+                                )
+                        )
+                        )
+                    {
+                        ++position;
+                    }
                 }
 
                 tokens.push_back(
@@ -98,7 +208,7 @@ namespace tinysql
                 continue;
             }
 
-            // Los identificadores y palabras reservadas comienzan con letra o guion bajo.
+            // Las palabras reservadas y los identificadores comienzan con letra o guion bajo.
             if (isIdentifierStart(currentCharacter))
             {
                 const std::size_t startPosition = position;
@@ -132,6 +242,24 @@ namespace tinysql
                 {
                     tokens.push_back(
                         { TokenType::SetKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "INSERT")
+                {
+                    tokens.push_back(
+                        { TokenType::InsertKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "INTO")
+                {
+                    tokens.push_back(
+                        { TokenType::IntoKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "VALUES")
+                {
+                    tokens.push_back(
+                        { TokenType::ValuesKeyword, lexeme }
                     );
                 }
                 else if (upperLexeme == "DATABASE")
@@ -217,7 +345,7 @@ namespace tinysql
         return tokens;
     }
 
-    // Comprueba si un caracter puede iniciar un identificador.
+    // Comprueba si un carácter puede iniciar un identificador.
     bool SqlLexer::isIdentifierStart(char character) const
     {
         const unsigned char checkedCharacter =
@@ -227,7 +355,7 @@ namespace tinysql
             character == '_';
     }
 
-    // Comprueba si un caracter puede aparecer después del inicio.
+    // Comprueba si un carácter puede aparecer después del inicio.
     bool SqlLexer::isIdentifierPart(char character) const
     {
         const unsigned char checkedCharacter =
@@ -237,7 +365,7 @@ namespace tinysql
             character == '_';
     }
 
-    // Convierte un texto a mayusculas para reconocer palabras reservadas.
+    // Convierte un texto a mayúsculas para reconocer palabras reservadas.
     std::string SqlLexer::toUpper(
         const std::string& text
     ) const

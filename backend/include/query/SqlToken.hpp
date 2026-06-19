@@ -4,11 +4,15 @@
 
 namespace tinysql
 {
-    // Identifica los elementos reconocidos por el lexer SQL.
+    // Identifica los elementos que puede producir el lexer de TinySQLDb.
     enum class TokenType
     {
         CreateKeyword,
         SetKeyword,
+        InsertKeyword,
+        IntoKeyword,
+        ValuesKeyword,
+
         DatabaseKeyword,
         TableKeyword,
         AsKeyword,
@@ -24,6 +28,7 @@ namespace tinysql
 
         Identifier,
         Number,
+        StringLiteral,
 
         LeftParenthesis,
         RightParenthesis,
@@ -33,7 +38,7 @@ namespace tinysql
         End
     };
 
-    // Representa una pieza individual encontrada dentro de una sentencia SQL.
+    // Representa una pieza individual encontrada dentro de una sentencia.
     struct SqlToken
     {
         TokenType type;

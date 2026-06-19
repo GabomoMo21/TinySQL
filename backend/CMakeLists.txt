@@ -99,7 +99,9 @@ target_link_libraries(TinySQLCatalog
 add_library(TinySQLQuery
     src/query/DatabaseParser.cpp
     src/query/DatabaseService.cpp
+    src/query/InsertValueConverter.cpp
     src/query/QueryProcessor.cpp
+    src/query/RecordService.cpp
     src/query/SqlLexer.cpp
     src/query/SqlParser.cpp
     src/query/TableService.cpp

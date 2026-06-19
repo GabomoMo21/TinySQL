@@ -15,6 +15,15 @@
 #include "query/TableService.hpp"
 #include "storage/TableFileManager.hpp"
 
+#include "core/ColumnMetadata.hpp"
+#include "core/DataType.hpp"
+#include "core/TableMetadata.hpp"
+#include "query/InsertValueConverter.hpp"
+#include "query/SqlLiteral.hpp"
+#include "query/RecordService.hpp"
+
+
+
 int main()
 {
     try
@@ -65,10 +74,102 @@ int main()
             tableFileManager
         );
 
+        tinysql::RecordService recordService(
+            systemCatalog,
+            tableFileManager
+        );
+
         tinysql::QueryProcessor queryProcessor(
             databaseService,
-            tableService
+            tableService,
+            recordService
         );
+
+        // Esta prueba temporal simula la metadata y los valores de una sentencia INSERT.
+        tinysql::TableMetadata testTable("Estudiante");
+
+        testTable.addColumn(
+            tinysql::ColumnMetadata(
+                "ID",
+                tinysql::DataType::Integer,
+                0,
+                false,
+                false
+            )
+        );
+
+        testTable.addColumn(
+            tinysql::ColumnMetadata(
+                "Nombre",
+                tinysql::DataType::Varchar,
+                30,
+                false,
+                false
+            )
+        );
+
+        testTable.addColumn(
+            tinysql::ColumnMetadata(
+                "Promedio",
+                tinysql::DataType::Double,
+                0,
+                false,
+                false
+            )
+        );
+
+        testTable.addColumn(
+            tinysql::ColumnMetadata(
+                "FechaNacimiento",
+                tinysql::DataType::DateTime,
+                0,
+                false,
+                false
+            )
+        );
+
+        testTable.addColumn(
+            tinysql::ColumnMetadata(
+                "Observacion",
+                tinysql::DataType::Varchar,
+                50,
+                true,
+                false
+            )
+        );
+
+        const std::vector<tinysql::SqlLiteral> literals =
+        {
+            {tinysql::SqlLiteralType::Integer, "1"},
+            {tinysql::SqlLiteralType::String, "Gabriel"},
+            {tinysql::SqlLiteralType::Double, "85.5"},
+            {tinysql::SqlLiteralType::String, "2000-01-01 01:02:00"},
+            {tinysql::SqlLiteralType::Null, ""}
+        };
+
+        tinysql::InsertValueConverter converter;
+        std::vector<tinysql::Value> convertedValues;
+
+        const tinysql::QueryResult conversionResult =
+            converter.convert(
+                testTable,
+                literals,
+                convertedValues
+            );
+
+        std::cout
+            << std::boolalpha
+            << conversionResult.isSuccess()
+            << " - "
+            << conversionResult.getMessage()
+            << '\n';
+
+        for (const tinysql::Value& value : convertedValues)
+        {
+            std::cout
+                << value.toString()
+                << '\n';
+        }
 
         // La aplicación utiliza CORS para permitir solicitudes del frontend.
         tinysql::TinySqlApp app;

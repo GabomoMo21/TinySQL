@@ -4,7 +4,7 @@
 
 namespace tinysql
 {
-    // Representa una fecha y hora mediante sus componentes numéricos.
+    // Representa una fecha y una hora mediante componentes numéricos.
     class DateTime
     {
     public:
@@ -27,6 +27,12 @@ namespace tinysql
         int getSecond() const;
 
         std::string toString() const;
+
+        // Intenta convertir un texto con formato YYYY-MM-DD HH:MM:SS.
+        static bool tryParse(
+            const std::string& text,
+            DateTime& result
+        );
 
     private:
         int year_;

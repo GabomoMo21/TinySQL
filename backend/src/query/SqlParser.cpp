@@ -9,7 +9,9 @@
 #include "core/ColumnMetadata.hpp"
 #include "core/DataType.hpp"
 #include "core/TableMetadata.hpp"
+#include "query/InsertStatement.hpp"
 #include "query/SqlLexer.hpp"
+#include "query/SqlLiteral.hpp"
 #include "query/SqlToken.hpp"
 
 namespace tinysql
@@ -50,6 +52,12 @@ namespace tinysql
                 if (match(TokenType::SetKeyword))
                 {
                     return parseSetDatabase();
+                }
+
+                // Las sentencias INSERT se procesan independientemente de CREATE y SET.
+                if (match(TokenType::InsertKeyword))
+                {
+                    return parseInsert();
                 }
 
                 throw std::runtime_error(
@@ -136,6 +144,113 @@ namespace tinysql
                     "",
                     std::move(table)
                 };
+            }
+
+            // Interpreta INSERT INTO tabla [VALUES] (valor, valor, ...).
+            SqlStatement parseInsert()
+            {
+                consume(
+                    TokenType::IntoKeyword,
+                    "Despues de INSERT se esperaba INTO."
+                );
+
+                const std::string tableName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la tabla."
+                    );
+
+                // VALUES se acepta, pero también se permite la variante del ejemplo del enunciado.
+                match(TokenType::ValuesKeyword);
+
+                consume(
+                    TokenType::LeftParenthesis,
+                    "Se esperaba '(' antes de los valores."
+                );
+
+                InsertStatement insertStatement;
+                insertStatement.tableName = tableName;
+
+                if (peek().type == TokenType::RightParenthesis)
+                {
+                    throw std::runtime_error(
+                        "INSERT debe contener al menos un valor."
+                    );
+                }
+
+                insertStatement.values.push_back(
+                    parseLiteral()
+                );
+
+                while (match(TokenType::Comma))
+                {
+                    insertStatement.values.push_back(
+                        parseLiteral()
+                    );
+                }
+
+                consume(
+                    TokenType::RightParenthesis,
+                    "Se esperaba ')' despues de los valores."
+                );
+
+                consumeOptionalSemicolonAndEnd();
+
+                return SqlStatement{
+                    SqlStatementType::Insert,
+                    "",
+                    std::nullopt,
+                    std::move(insertStatement)
+                };
+            }
+
+            // Convierte un token de valor en una representación sintáctica.
+            SqlLiteral parseLiteral()
+            {
+                if (match(TokenType::NullKeyword))
+                {
+                    return SqlLiteral{
+                        SqlLiteralType::Null,
+                        ""
+                    };
+                }
+
+                if (peek().type == TokenType::StringLiteral)
+                {
+                    const SqlToken& stringToken =
+                        consume(
+                            TokenType::StringLiteral,
+                            "Se esperaba un texto."
+                        );
+
+                    return SqlLiteral{
+                        SqlLiteralType::String,
+                        stringToken.lexeme
+                    };
+                }
+
+                if (peek().type == TokenType::Number)
+                {
+                    const SqlToken& numberToken =
+                        consume(
+                            TokenType::Number,
+                            "Se esperaba un numero."
+                        );
+
+                    const bool isDouble =
+                        numberToken.lexeme.find('.') !=
+                        std::string::npos;
+
+                    return SqlLiteral{
+                        isDouble
+                            ? SqlLiteralType::Double
+                            : SqlLiteralType::Integer,
+                        numberToken.lexeme
+                    };
+                }
+
+                throw std::runtime_error(
+                    "Se esperaba NULL, un numero o un texto entre comillas."
+                );
             }
 
             ColumnMetadata parseColumnDefinition()

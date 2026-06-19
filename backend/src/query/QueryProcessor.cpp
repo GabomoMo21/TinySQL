@@ -8,12 +8,15 @@
 
 namespace tinysql
 {
+    // Conserva una referencia a cada servicio utilizado por el procesador.
     QueryProcessor::QueryProcessor(
         DatabaseService& databaseService,
-        TableService& tableService
+        TableService& tableService,
+        RecordService& recordService
     )
         : databaseService_(databaseService),
-        tableService_(tableService)
+        tableService_(tableService),
+        recordService_(recordService)
     {
     }
 
@@ -37,6 +40,7 @@ namespace tinysql
                     request.getStatement()
                 );
 
+            // Delega cada sentencia al servicio encargado de ejecutarla.
             switch (statement.type)
             {
             case SqlStatementType::CreateDatabase:
@@ -52,10 +56,39 @@ namespace tinysql
                 break;
 
             case SqlStatementType::CreateTable:
+                if (!statement.table.has_value())
+                {
+                    result = QueryResult::failure(
+                        ErrorCode::InternalError,
+                        "El parser no produjo los datos necesarios para CREATE TABLE."
+                    );
+
+                    break;
+                }
+
                 result = tableService_.createTable(
                     request.getDatabaseName(),
                     statement.table.value()
                 );
+
+                break;
+
+            case SqlStatementType::Insert:
+                if (!statement.insert.has_value())
+                {
+                    result = QueryResult::failure(
+                        ErrorCode::InternalError,
+                        "El parser no produjo los datos necesarios para INSERT."
+                    );
+
+                    break;
+                }
+
+                result = recordService_.insert(
+                    request.getDatabaseName(),
+                    statement.insert.value()
+                );
+
                 break;
             }
         }
