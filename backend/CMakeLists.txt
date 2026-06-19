@@ -44,6 +44,7 @@ target_link_libraries(TinySQLServer
         TinySQLStorage
         TinySQLCatalog
         TinySQLQuery
+        TinySQLApi
 )
 
 # Indica que el servidor utiliza como mínimo las funciones disponibles en Windows 10.
@@ -104,4 +105,23 @@ target_link_libraries(TinySQLQuery
         TinySQLCore
         TinySQLStorage
         TinySQLCatalog
+)
+
+# Esta biblioteca contiene las rutas HTTP y la conversión entre JSON y C++.
+add_library(TinySQLApi
+    src/api/QueryApi.cpp
+)
+
+# Permite utilizar includes como api/QueryApi.hpp.
+target_include_directories(TinySQLApi
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# La API utiliza Crow, los modelos compartidos y el procesador de consultas.
+target_link_libraries(TinySQLApi
+    PUBLIC
+        Crow::Crow
+        TinySQLCore
+        TinySQLQuery
 )

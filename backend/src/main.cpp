@@ -3,61 +3,75 @@
 #include <exception>
 #include <iostream>
 
-#include "storage/StoragePaths.hpp"
-
+#include "api/QueryApi.hpp"
 #include "catalog/SystemDatabaseCatalog.hpp"
-
-
+#include "query/DatabaseService.hpp"
+#include "query/QueryProcessor.hpp"
+#include "storage/StoragePaths.hpp"
 
 int main()
 {
-    // El servidor prepara las carpetas y el catálogo antes de aceptar solicitudes.
     try
     {
+        // Prepara las rutas utilizadas por el motor.
         tinysql::StoragePaths storagePaths("data");
         storagePaths.ensureDirectoriesExist();
 
+        // Inicializa el archivo que registra las bases existentes.
         tinysql::SystemDatabaseCatalog databaseCatalog(
             storagePaths.getSystemDatabasesFilePath()
         );
 
         databaseCatalog.initialize();
-
-
-
-        // La lectura inicial permite detectar archivos corruptos antes de levantar la API.
         databaseCatalog.getAllDatabases();
+
+        // Construye las capas que procesarán las consultas recibidas.
+        tinysql::DatabaseService databaseService(
+            storagePaths,
+            databaseCatalog
+        );
+
+        tinysql::QueryProcessor queryProcessor(
+            databaseService
+        );
+
+        // La aplicación utiliza CORS para permitir solicitudes del frontend.
+        tinysql::TinySqlApp app;
+
+        // Este endpoint permite comprobar que el servidor está funcionando.
+        CROW_ROUTE(app, "/health")
+            .methods(crow::HTTPMethod::GET)
+            ([]()
+                {
+                    crow::json::wvalue response;
+
+                    response["status"] = "ok";
+                    response["service"] = "TinySQLDb";
+
+                    return response;
+                });
+
+        // Registra el endpoint encargado de ejecutar consultas SQL.
+        tinysql::registerQueryRoutes(
+            app,
+            queryProcessor
+        );
+
+        // El servidor queda disponible en el puerto utilizado por el proyecto.
+        app.port(8080)
+            .multithreaded()
+            .run();
     }
     catch (const std::exception& error)
     {
-        std::cerr << "No se pudo inicializar el almacenamiento: "
+        // Un error de inicialización impide que el servidor funcione correctamente.
+        std::cerr
+            << "No se pudo iniciar TinySQLDb: "
             << error.what()
             << '\n';
 
         return 1;
     }
-
-
-    // Esta aplicación recibirá las solicitudes HTTP del cliente web.
-    crow::SimpleApp app;
-
-    // Este endpoint permite comprobar que el servidor está funcionando.
-    CROW_ROUTE(app, "/health")
-        .methods(crow::HTTPMethod::GET)
-        ([]()
-            {
-                // La respuesta se crea como JSON porque la Web API será la única capa que manejará este formato.
-                crow::json::wvalue response;
-                response["status"] = "ok";
-                response["service"] = "TinySQLDb";
-
-                return response;
-            });
-
-    // El servidor escucha en el puerto 8080 y puede atender varias solicitudes.
-    app.port(8080)
-        .multithreaded()
-        .run();
 
     return 0;
 }
