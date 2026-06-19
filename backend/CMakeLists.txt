@@ -70,6 +70,9 @@ target_include_directories(TinySQLStorage
 # Esta biblioteca administra la metadata almacenada en el catálogo del sistema.
 add_library(TinySQLCatalog
     src/catalog/SystemDatabaseCatalog.cpp
+    src/catalog/SystemTableCatalog.cpp
+    src/catalog/SystemColumnCatalog.cpp
+    src/catalog/SystemIndexCatalog.cpp
 )
 
 # Permite utilizar includes como catalog/SystemDatabaseCatalog.hpp.
