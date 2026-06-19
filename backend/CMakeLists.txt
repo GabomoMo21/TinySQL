@@ -73,6 +73,7 @@ add_library(TinySQLCatalog
     src/catalog/SystemTableCatalog.cpp
     src/catalog/SystemColumnCatalog.cpp
     src/catalog/SystemIndexCatalog.cpp
+    src/catalog/SystemCatalog.cpp
 )
 
 # Permite utilizar includes como catalog/SystemDatabaseCatalog.hpp.

@@ -8,6 +8,10 @@
 #include "query/DatabaseService.hpp"
 #include "query/QueryProcessor.hpp"
 #include "storage/StoragePaths.hpp"
+#include "catalog/SystemCatalog.hpp"
+#include "catalog/SystemColumnCatalog.hpp"
+#include "catalog/SystemIndexCatalog.hpp"
+#include "catalog/SystemTableCatalog.hpp"
 
 int main()
 {
@@ -17,13 +21,32 @@ int main()
         tinysql::StoragePaths storagePaths("data");
         storagePaths.ensureDirectoriesExist();
 
-        // Inicializa el archivo que registra las bases existentes.
+        // Inicializa los archivos del catálogo del sistema.
         tinysql::SystemDatabaseCatalog databaseCatalog(
             storagePaths.getSystemDatabasesFilePath()
         );
 
-        databaseCatalog.initialize();
-        databaseCatalog.getAllDatabases();
+        tinysql::SystemTableCatalog tableCatalog(
+            storagePaths.getSystemTablesFilePath()
+        );
+
+        tinysql::SystemColumnCatalog columnCatalog(
+            storagePaths.getSystemColumnsFilePath()
+        );
+
+        tinysql::SystemIndexCatalog indexCatalog(
+            storagePaths.getSystemIndexesFilePath()
+        );
+
+        tinysql::SystemCatalog systemCatalog(
+            databaseCatalog,
+            tableCatalog,
+            columnCatalog,
+            indexCatalog
+        );
+
+        systemCatalog.initialize();
+        systemCatalog.getAllDatabases();
 
         // Construye las capas que procesarán las consultas recibidas.
         tinysql::DatabaseService databaseService(
