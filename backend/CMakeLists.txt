@@ -58,12 +58,18 @@ add_library(TinySQLStorage
     src/storage/BinaryReader.cpp
     src/storage/BinaryWriter.cpp
     src/storage/StoragePaths.cpp
+    src/storage/TableFileManager.cpp
 )
 
 # Permite incluir archivos utilizando rutas como storage/StoragePaths.hpp.
 target_include_directories(TinySQLStorage
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(TinySQLStorage
+    PUBLIC
+        TinySQLCore
 )
 
 
