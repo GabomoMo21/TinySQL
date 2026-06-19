@@ -5,6 +5,7 @@
 
 #include "core/TableMetadata.hpp"
 #include "query/InsertStatement.hpp"
+#include "query/SelectStatement.hpp"
 
 namespace tinysql
 {
@@ -14,17 +15,23 @@ namespace tinysql
         CreateDatabase,
         SetDatabase,
         CreateTable,
-        Insert
+        Insert,
+        Select
     };
 
-    // Reúne los datos producidos por el parser para cada tipo de sentencia.
+    // Reúne la información producida por el parser para cada sentencia.
     struct SqlStatement
     {
         SqlStatementType type;
         std::string databaseName;
-        std::optional<TableMetadata> table;
 
-        // Este campo solo contiene información cuando la sentencia es INSERT.
-        std::optional<InsertStatement> insert = std::nullopt;
+        std::optional<TableMetadata> table =
+            std::nullopt;
+
+        std::optional<InsertStatement> insert =
+            std::nullopt;
+
+        std::optional<SelectStatement> select =
+            std::nullopt;
     };
 }

@@ -1,10 +1,14 @@
 #include "storage/TableFileManager.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <limits>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
 #include "core/DataType.hpp"
 #include "core/DateTime.hpp"
@@ -44,6 +48,31 @@ namespace tinysql
                 sizeof(T)
             );
         }
+
+        // Recupera un valor numérico desde una posición del registro.
+template<typename T>
+T readNumberFromRecord(
+    const std::vector<std::uint8_t>& record,
+    std::size_t offset
+)
+{
+    if (offset + sizeof(T) > record.size())
+    {
+        throw std::runtime_error(
+            "El valor excede los límites del registro."
+        );
+    }
+
+    T value{};
+
+    std::memcpy(
+        &value,
+        record.data() + offset,
+        sizeof(T)
+    );
+
+    return value;
+}
     }
 
     TableFileManager::TableFileManager(
@@ -317,14 +346,401 @@ namespace tinysql
         return record;
     }
 
-    // Comprueba que el archivo pertenece a la tabla y conserva el formato esperado.
+    // Convierte un bloque fijo de bytes en valores utilizables por el motor.
+    StoredRecord TableFileManager::deserializeRecord(
+        const TableMetadata& table,
+        const std::vector<std::uint8_t>& recordBytes,
+        std::uint64_t offset
+    ) const
+    {
+        const std::uint32_t expectedSize =
+            calculateRecordSize(table);
+
+        if (recordBytes.size() != expectedSize)
+        {
+            throw std::runtime_error(
+                "El bloque leído no coincide con el tamaño del registro."
+            );
+        }
+
+        const std::vector<ColumnMetadata>& columns =
+            table.getColumns();
+
+        std::size_t currentOffset = 0;
+
+        const std::uint8_t tombstone =
+            recordBytes[currentOffset++];
+
+        if (tombstone != 0 && tombstone != 1)
+        {
+            throw std::runtime_error(
+                "El registro contiene un tombstone inválido."
+            );
+        }
+
+        std::vector<std::uint8_t> nullFlags;
+        nullFlags.reserve(columns.size());
+
+        // Cada columna debe tener una bandera NULL válida.
+        for (std::size_t index = 0; index < columns.size(); ++index)
+        {
+            const std::uint8_t nullFlag =
+                recordBytes[currentOffset++];
+
+            if (nullFlag != 0 && nullFlag != 1)
+            {
+                throw std::runtime_error(
+                    "El registro contiene una bandera NULL inválida."
+                );
+            }
+
+            nullFlags.push_back(nullFlag);
+        }
+
+        std::vector<Value> values;
+        values.reserve(columns.size());
+
+        for (std::size_t index = 0; index < columns.size(); ++index)
+        {
+            const ColumnMetadata& column =
+                columns[index];
+
+            const std::uint32_t columnSize =
+                calculateColumnSize(column);
+
+            if (
+                currentOffset + columnSize >
+                recordBytes.size()
+                )
+            {
+                throw std::runtime_error(
+                    "El registro terminó antes de completar sus columnas."
+                );
+            }
+
+            // Aunque el campo sea NULL, sus bytes reservados deben saltarse.
+            if (nullFlags[index] == 1)
+            {
+                values.emplace_back();
+                currentOffset += columnSize;
+                continue;
+            }
+
+            switch (column.getType())
+            {
+            case DataType::Integer:
+            {
+                const std::int32_t integerValue =
+                    readNumberFromRecord<std::int32_t>(
+                        recordBytes,
+                        currentOffset
+                    );
+
+                values.emplace_back(integerValue);
+                currentOffset += sizeof(integerValue);
+                break;
+            }
+
+            case DataType::Double:
+            {
+                const double doubleValue =
+                    readNumberFromRecord<double>(
+                        recordBytes,
+                        currentOffset
+                    );
+
+                values.emplace_back(doubleValue);
+                currentOffset += sizeof(doubleValue);
+                break;
+            }
+
+            case DataType::Varchar:
+            {
+                std::size_t textLength = 0;
+
+                // El primer byte cero marca el final del contenido utilizado.
+                while (
+                    textLength < columnSize &&
+                    recordBytes[currentOffset + textLength] != 0
+                    )
+                {
+                    ++textLength;
+                }
+
+                const char* textStart =
+                    reinterpret_cast<const char*>(
+                        recordBytes.data() + currentOffset
+                        );
+
+                values.emplace_back(
+                    std::string(
+                        textStart,
+                        textLength
+                    )
+                );
+
+                currentOffset += columnSize;
+                break;
+            }
+
+            case DataType::DateTime:
+            {
+                std::int32_t components[6]{};
+
+                for (std::size_t componentIndex = 0;
+                    componentIndex < 6;
+                    ++componentIndex)
+                {
+                    components[componentIndex] =
+                        readNumberFromRecord<std::int32_t>(
+                            recordBytes,
+                            currentOffset
+                        );
+
+                    currentOffset += sizeof(std::int32_t);
+                }
+
+                const DateTime dateTime(
+                    components[0],
+                    components[1],
+                    components[2],
+                    components[3],
+                    components[4],
+                    components[5]
+                );
+
+                // Una fecha inválida indica que el archivo fue alterado o quedó corrupto.
+                DateTime validatedDateTime;
+
+                if (
+                    !DateTime::tryParse(
+                        dateTime.toString(),
+                        validatedDateTime
+                    )
+                    )
+                {
+                    throw std::runtime_error(
+                        "El registro contiene un DATETIME inválido."
+                    );
+                }
+
+                values.emplace_back(validatedDateTime);
+                break;
+            }
+            }
+        }
+
+        if (currentOffset != recordBytes.size())
+        {
+            throw std::runtime_error(
+                "El tamaño leído no coincide con la estructura del registro."
+            );
+        }
+
+        return StoredRecord{
+            offset,
+            tombstone == 1,
+            std::move(values)
+        };
+    }
+
+    // Lee secuencialmente todos los registros completos del archivo.
+    std::vector<StoredRecord> TableFileManager::readAllRecords(
+        const std::string& databaseName,
+        const TableMetadata& table,
+        bool includeDeleted
+    ) const
+    {
+        const std::filesystem::path tableFilePath =
+            storagePaths_.getTableFilePath(
+                databaseName,
+                table.getName()
+            );
+
+        if (
+            !std::filesystem::exists(tableFilePath) ||
+            !std::filesystem::is_regular_file(tableFilePath)
+            )
+        {
+            throw std::runtime_error(
+                "El archivo físico de la tabla no existe."
+            );
+        }
+
+        BinaryReader reader(tableFilePath);
+
+        validateTableHeader(
+            reader,
+            table
+        );
+
+        const std::uint64_t recordsStart =
+            reader.getPosition();
+
+        const std::uintmax_t fileSize =
+            std::filesystem::file_size(
+                tableFilePath
+            );
+
+        if (fileSize < recordsStart)
+        {
+            throw std::runtime_error(
+                "El archivo de la tabla tiene un tamaño inválido."
+            );
+        }
+
+        const std::uint64_t recordSize =
+            calculateRecordSize(table);
+
+        if (recordSize == 0)
+        {
+            throw std::runtime_error(
+                "La metadata produjo un tamaño de registro inválido."
+            );
+        }
+
+        const std::uintmax_t recordsBytes =
+            fileSize - recordsStart;
+
+        if (recordsBytes % recordSize != 0)
+        {
+            throw std::runtime_error(
+                "El archivo contiene un registro incompleto."
+            );
+        }
+
+        const std::uintmax_t recordCount =
+            recordsBytes / recordSize;
+
+        std::vector<StoredRecord> records;
+
+        records.reserve(
+            static_cast<std::size_t>(recordCount)
+        );
+
+        for (std::uintmax_t index = 0;
+            index < recordCount;
+            ++index)
+        {
+            const std::uint64_t recordOffset =
+                reader.getPosition();
+
+            std::vector<std::uint8_t> recordBytes(
+                static_cast<std::size_t>(recordSize)
+            );
+
+            reader.readBytes(
+                recordBytes.data(),
+                recordBytes.size()
+            );
+
+            StoredRecord record =
+                deserializeRecord(
+                    table,
+                    recordBytes,
+                    recordOffset
+                );
+
+            if (includeDeleted || !record.deleted)
+            {
+                records.push_back(
+                    std::move(record)
+                );
+            }
+        }
+
+        return records;
+    }
+
+    // Recupera directamente el registro ubicado en un offset conocido.
+    StoredRecord TableFileManager::readRecordAt(
+        const std::string& databaseName,
+        const TableMetadata& table,
+        std::uint64_t offset
+    ) const
+    {
+        const std::filesystem::path tableFilePath =
+            storagePaths_.getTableFilePath(
+                databaseName,
+                table.getName()
+            );
+
+        if (
+            !std::filesystem::exists(tableFilePath) ||
+            !std::filesystem::is_regular_file(tableFilePath)
+            )
+        {
+            throw std::runtime_error(
+                "El archivo físico de la tabla no existe."
+            );
+        }
+
+        BinaryReader reader(tableFilePath);
+
+        validateTableHeader(
+            reader,
+            table
+        );
+
+        const std::uint64_t recordsStart =
+            reader.getPosition();
+
+        const std::uint64_t recordSize =
+            calculateRecordSize(table);
+
+        const std::uintmax_t fileSize =
+            std::filesystem::file_size(
+                tableFilePath
+            );
+
+        if (offset < recordsStart)
+        {
+            throw std::runtime_error(
+                "El offset apunta dentro de la cabecera."
+            );
+        }
+
+        if ((offset - recordsStart) % recordSize != 0)
+        {
+            throw std::runtime_error(
+                "El offset no coincide con el inicio de un registro."
+            );
+        }
+
+        if (
+            offset > fileSize ||
+            recordSize > fileSize - offset
+            )
+        {
+            throw std::runtime_error(
+                "El offset apunta fuera de los registros existentes."
+            );
+        }
+
+        reader.seek(offset);
+
+        std::vector<std::uint8_t> recordBytes(
+            static_cast<std::size_t>(recordSize)
+        );
+
+        reader.readBytes(
+            recordBytes.data(),
+            recordBytes.size()
+        );
+
+        return deserializeRecord(
+            table,
+            recordBytes,
+            offset
+        );
+    }
+
+    // Comprueba la cabecera y deja el cursor al inicio de los registros.
     void TableFileManager::validateTableHeader(
-        const std::filesystem::path& filePath,
+        BinaryReader& reader,
         const TableMetadata& table
     ) const
     {
-        BinaryReader reader(filePath);
-
         const std::string signature =
             reader.readString();
 
@@ -395,10 +811,15 @@ namespace tinysql
             );
         }
 
-        validateTableHeader(
-            tableFilePath,
-            table
-        );
+        // Se valida la cabecera antes de abrir nuevamente el archivo para escritura.
+        {
+            BinaryReader headerReader(tableFilePath);
+
+            validateTableHeader(
+                headerReader,
+                table
+            );
+        }
 
         const std::vector<std::uint8_t> record =
             serializeRecord(

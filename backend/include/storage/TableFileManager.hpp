@@ -9,6 +9,8 @@
 #include "core/TableMetadata.hpp"
 #include "core/Value.hpp"
 #include "storage/StoragePaths.hpp"
+#include "storage/StoredRecord.hpp"
+#include "storage/BinaryReader.hpp"
 
 namespace tinysql
 {
@@ -41,6 +43,20 @@ namespace tinysql
             const std::vector<Value>& values
         ) const;
 
+        // Recupera los registros almacenados en la tabla.
+        std::vector<StoredRecord> readAllRecords(
+            const std::string& databaseName,
+            const TableMetadata& table,
+            bool includeDeleted = false
+        ) const;
+
+        // Recupera un registro específico utilizando su offset.
+        StoredRecord readRecordAt(
+            const std::string& databaseName,
+            const TableMetadata& table,
+            std::uint64_t offset
+        ) const;
+
     private:
         std::uint32_t calculateColumnSize(
             const ColumnMetadata& column
@@ -57,5 +73,16 @@ namespace tinysql
         ) const;
 
         const StoragePaths& storagePaths_;
+
+        StoredRecord deserializeRecord(
+            const TableMetadata& table,
+            const std::vector<std::uint8_t>& recordBytes,
+            std::uint64_t offset
+        ) const;
+
+        void validateTableHeader(
+            BinaryReader& reader,
+            const TableMetadata& table
+        ) const;
     };
 }

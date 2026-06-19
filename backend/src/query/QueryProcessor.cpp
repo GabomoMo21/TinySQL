@@ -20,6 +20,7 @@ namespace tinysql
     {
     }
 
+    // Analiza la sentencia, ejecuta la operación y mide su duración.
     QueryResult QueryProcessor::execute(
         const QueryRequest& request
     ) const
@@ -44,60 +45,90 @@ namespace tinysql
             switch (statement.type)
             {
             case SqlStatementType::CreateDatabase:
-                result = databaseService_.createDatabase(
-                    statement.databaseName
-                );
+                result =
+                    databaseService_.createDatabase(
+                        statement.databaseName
+                    );
+
                 break;
 
             case SqlStatementType::SetDatabase:
-                result = databaseService_.setDatabase(
-                    statement.databaseName
-                );
+                result =
+                    databaseService_.setDatabase(
+                        statement.databaseName
+                    );
+
                 break;
 
             case SqlStatementType::CreateTable:
                 if (!statement.table.has_value())
                 {
-                    result = QueryResult::failure(
-                        ErrorCode::InternalError,
-                        "El parser no produjo los datos necesarios para CREATE TABLE."
-                    );
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para CREATE TABLE."
+                        );
 
                     break;
                 }
 
-                result = tableService_.createTable(
-                    request.getDatabaseName(),
-                    statement.table.value()
-                );
+                result =
+                    tableService_.createTable(
+                        request.getDatabaseName(),
+                        statement.table.value()
+                    );
 
                 break;
 
             case SqlStatementType::Insert:
                 if (!statement.insert.has_value())
                 {
-                    result = QueryResult::failure(
-                        ErrorCode::InternalError,
-                        "El parser no produjo los datos necesarios para INSERT."
-                    );
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para INSERT."
+                        );
 
                     break;
                 }
 
-                result = recordService_.insert(
-                    request.getDatabaseName(),
-                    statement.insert.value()
-                );
+                result =
+                    recordService_.insert(
+                        request.getDatabaseName(),
+                        statement.insert.value()
+                    );
+
+                break;
+
+            case SqlStatementType::Select:
+                if (!statement.select.has_value())
+                {
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para SELECT."
+                        );
+
+                    break;
+                }
+
+                result =
+                    recordService_.selectAll(
+                        request.getDatabaseName(),
+                        statement.select.value()
+                    );
 
                 break;
             }
         }
         catch (const std::exception& error)
         {
-            result = QueryResult::failure(
-                ErrorCode::InvalidSyntax,
-                error.what()
-            );
+            // Los errores producidos durante el análisis se consideran sintácticos.
+            result =
+                QueryResult::failure(
+                    ErrorCode::InvalidSyntax,
+                    error.what()
+                );
         }
 
         const auto endTime =

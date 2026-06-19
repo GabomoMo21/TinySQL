@@ -38,6 +38,17 @@ namespace tinysql
                 continue;
             }
 
+            // El asterisco representa todas las columnas en una sentencia SELECT.
+            if (currentCharacter == '*')
+            {
+                tokens.push_back(
+                    { TokenType::Asterisk, "*" }
+                );
+
+                ++position;
+                continue;
+            }
+
             if (currentCharacter == '(')
             {
                 tokens.push_back(
@@ -256,6 +267,20 @@ namespace tinysql
                         { TokenType::IntoKeyword, lexeme }
                     );
                 }
+
+                else if (upperLexeme == "SELECT")
+                {
+                    tokens.push_back(
+                        { TokenType::SelectKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "FROM")
+                {
+                    tokens.push_back(
+                        { TokenType::FromKeyword, lexeme }
+                    );
+                }
+
                 else if (upperLexeme == "VALUES")
                 {
                     tokens.push_back(

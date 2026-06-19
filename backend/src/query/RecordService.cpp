@@ -8,6 +8,13 @@
 #include "core/TableMetadata.hpp"
 #include "core/Value.hpp"
 
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "core/ColumnMetadata.hpp"
+#include "storage/StoredRecord.hpp"
+
 namespace tinysql
 {
     // Conserva las referencias al catálogo y al administrador físico de tablas.
@@ -116,6 +123,112 @@ namespace tinysql
             return QueryResult::failure(
                 ErrorCode::StorageError,
                 "No se pudo escribir el registro en el archivo de la tabla."
+            );
+        }
+    }
+
+    // Recupera todos los registros activos y los prepara como resultado tabular.
+    QueryResult RecordService::selectAll(
+        const std::string& databaseName,
+        const SelectStatement& statement
+    ) const
+    {
+        if (databaseName.empty())
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "Debe seleccionar una base de datos antes de consultar registros."
+            );
+        }
+
+        if (!systemCatalog_.databaseExists(databaseName))
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "La base de datos activa no existe."
+            );
+        }
+
+        if (
+            !systemCatalog_.tableExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::TableNotFound,
+                "La tabla indicada no existe."
+            );
+        }
+
+        if (
+            !tableFileManager_.tableFileExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "La tabla existe en el catalogo, pero su archivo fisico no existe."
+            );
+        }
+
+        try
+        {
+            const TableMetadata table =
+                systemCatalog_.getTable(
+                    databaseName,
+                    statement.tableName
+                );
+
+            std::vector<StoredRecord> records =
+                tableFileManager_.readAllRecords(
+                    databaseName,
+                    table
+                );
+
+            QueryResult result =
+                QueryResult::success(
+                    "Consulta ejecutada correctamente. Filas encontradas: " +
+                    std::to_string(records.size()) +
+                    "."
+                );
+
+            std::vector<std::string> columnNames;
+
+            columnNames.reserve(
+                table.getColumnCount()
+            );
+
+            // Los encabezados se mantienen en el orden registrado en SystemColumns.
+            for (const ColumnMetadata& column : table.getColumns())
+            {
+                columnNames.push_back(
+                    column.getName()
+                );
+            }
+
+            result.setColumns(
+                std::move(columnNames)
+            );
+
+            // Cada registro se entrega como una fila del resultado.
+            for (StoredRecord& record : records)
+            {
+                result.addRow(
+                    std::move(record.values)
+                );
+            }
+
+            return result;
+        }
+        catch (const std::exception&)
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "No se pudieron leer los registros de la tabla."
             );
         }
     }

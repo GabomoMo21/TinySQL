@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 
+#include <limits>
+
 namespace tinysql
 {
     // Abre el archivo solicitado en modo binario.
@@ -95,5 +97,83 @@ namespace tinysql
         }
 
         return value;
+    }
+
+    // Lee un bloque de tamaño conocido sin interpretar su contenido.
+    void BinaryReader::readBytes(
+        void* destination,
+        std::size_t size
+    )
+    {
+        if (size == 0)
+        {
+            return;
+        }
+
+        if (destination == nullptr)
+        {
+            throw std::runtime_error(
+                "No se puede leer un bloque hacia una direccion nula."
+            );
+        }
+
+        file_.read(
+            static_cast<char*>(destination),
+            static_cast<std::streamsize>(size)
+        );
+
+        if (!file_)
+        {
+            throw std::runtime_error(
+                "No se pudo leer el bloque completo del archivo binario."
+            );
+        }
+    }
+
+    // Devuelve la posición actual del lector dentro del archivo.
+    std::uint64_t BinaryReader::getPosition()
+    {
+        const std::streampos position =
+            file_.tellg();
+
+        if (position == std::streampos(-1))
+        {
+            throw std::runtime_error(
+                "No se pudo obtener la posicion actual del archivo."
+            );
+        }
+
+        return static_cast<std::uint64_t>(position);
+    }
+
+    // Mueve el lector hacia una posición absoluta del archivo.
+    void BinaryReader::seek(std::uint64_t position)
+    {
+        if (
+            position >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::streamoff>::max()
+                )
+            )
+        {
+            throw std::runtime_error(
+                "La posicion solicitada excede el limite del archivo."
+            );
+        }
+
+        // Se limpia cualquier estado anterior antes de mover el cursor.
+        file_.clear();
+
+        file_.seekg(
+            static_cast<std::streamoff>(position),
+            std::ios::beg
+        );
+
+        if (!file_)
+        {
+            throw std::runtime_error(
+                "No se pudo mover el lector a la posicion solicitada."
+            );
+        }
     }
 }

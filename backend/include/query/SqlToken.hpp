@@ -35,6 +35,10 @@ namespace tinysql
         Comma,
         Semicolon,
 
+        SelectKeyword,
+        FromKeyword,
+        Asterisk,
+
         End
     };
 

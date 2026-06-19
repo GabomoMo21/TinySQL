@@ -1,6 +1,8 @@
+
 #include "query/SqlParser.hpp"
 
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -10,6 +12,7 @@
 #include "core/DataType.hpp"
 #include "core/TableMetadata.hpp"
 #include "query/InsertStatement.hpp"
+#include "query/SelectStatement.hpp"
 #include "query/SqlLexer.hpp"
 #include "query/SqlLiteral.hpp"
 #include "query/SqlToken.hpp"
@@ -18,7 +21,7 @@ namespace tinysql
 {
     namespace
     {
-        // Mantiene el estado del parser mientras consume tokens.
+        // Mantiene el estado del parser mientras consume los tokens de una sentencia.
         class ParserState
         {
         public:
@@ -26,10 +29,11 @@ namespace tinysql
                 std::vector<SqlToken> tokens
             )
                 : tokens_(std::move(tokens)),
-                currentPosition_(0)
+                  currentPosition_(0)
             {
             }
 
+            // Identifica el tipo general de sentencia y llama al método correspondiente.
             SqlStatement parseStatement()
             {
                 if (match(TokenType::CreateKeyword))
@@ -54,18 +58,23 @@ namespace tinysql
                     return parseSetDatabase();
                 }
 
-                // Las sentencias INSERT se procesan independientemente de CREATE y SET.
                 if (match(TokenType::InsertKeyword))
                 {
                     return parseInsert();
                 }
 
+                if (match(TokenType::SelectKeyword))
+                {
+                    return parseSelect();
+                }
+
                 throw std::runtime_error(
-                    "La sentencia debe comenzar con CREATE o SET."
+                    "La sentencia debe comenzar con CREATE, SET, INSERT o SELECT."
                 );
             }
 
         private:
+            // Interpreta CREATE DATABASE nombre.
             SqlStatement parseCreateDatabase()
             {
                 const std::string databaseName =
@@ -75,13 +84,27 @@ namespace tinysql
 
                 consumeOptionalSemicolonAndEnd();
 
-                return SqlStatement{
-                    SqlStatementType::CreateDatabase,
-                    databaseName,
-                    std::nullopt
-                };
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::CreateDatabase;
+
+                parsedStatement.databaseName =
+                    databaseName;
+
+                parsedStatement.table =
+                    std::nullopt;
+
+                parsedStatement.insert =
+                    std::nullopt;
+
+                parsedStatement.select =
+                    std::nullopt;
+
+                return parsedStatement;
             }
 
+            // Interpreta SET DATABASE nombre.
             SqlStatement parseSetDatabase()
             {
                 consume(
@@ -96,13 +119,27 @@ namespace tinysql
 
                 consumeOptionalSemicolonAndEnd();
 
-                return SqlStatement{
-                    SqlStatementType::SetDatabase,
-                    databaseName,
-                    std::nullopt
-                };
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::SetDatabase;
+
+                parsedStatement.databaseName =
+                    databaseName;
+
+                parsedStatement.table =
+                    std::nullopt;
+
+                parsedStatement.insert =
+                    std::nullopt;
+
+                parsedStatement.select =
+                    std::nullopt;
+
+                return parsedStatement;
             }
 
+            // Interpreta CREATE TABLE nombre [AS] (columnas).
             SqlStatement parseCreateTable()
             {
                 const std::string tableName =
@@ -110,8 +147,8 @@ namespace tinysql
                         "Se esperaba el nombre de la tabla."
                     );
 
-                // El enunciado usa CREATE TABLE ... AS (...),
-                // pero el ejemplo también muestra CREATE TABLE (...).
+                // AS se acepta porque aparece en la sintaxis principal,
+                // pero también se permite la variante que lo omite.
                 match(TokenType::AsKeyword);
 
                 consume(
@@ -120,6 +157,14 @@ namespace tinysql
                 );
 
                 TableMetadata table(tableName);
+
+                // Una tabla debe contener al menos una columna.
+                if (peek().type == TokenType::RightParenthesis)
+                {
+                    throw std::runtime_error(
+                        "CREATE TABLE debe contener al menos una columna."
+                    );
+                }
 
                 table.addColumn(
                     parseColumnDefinition()
@@ -139,11 +184,23 @@ namespace tinysql
 
                 consumeOptionalSemicolonAndEnd();
 
-                return SqlStatement{
-                    SqlStatementType::CreateTable,
-                    "",
-                    std::move(table)
-                };
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::CreateTable;
+
+                parsedStatement.databaseName = "";
+
+                parsedStatement.table =
+                    std::move(table);
+
+                parsedStatement.insert =
+                    std::nullopt;
+
+                parsedStatement.select =
+                    std::nullopt;
+
+                return parsedStatement;
             }
 
             // Interpreta INSERT INTO tabla [VALUES] (valor, valor, ...).
@@ -159,7 +216,7 @@ namespace tinysql
                         "Se esperaba el nombre de la tabla."
                     );
 
-                // VALUES se acepta, pero también se permite la variante del ejemplo del enunciado.
+                // VALUES es opcional para admitir las dos variantes del proyecto.
                 match(TokenType::ValuesKeyword);
 
                 consume(
@@ -167,15 +224,17 @@ namespace tinysql
                     "Se esperaba '(' antes de los valores."
                 );
 
-                InsertStatement insertStatement;
-                insertStatement.tableName = tableName;
-
                 if (peek().type == TokenType::RightParenthesis)
                 {
                     throw std::runtime_error(
                         "INSERT debe contener al menos un valor."
                     );
                 }
+
+                InsertStatement insertStatement;
+
+                insertStatement.tableName =
+                    tableName;
 
                 insertStatement.values.push_back(
                     parseLiteral()
@@ -195,12 +254,69 @@ namespace tinysql
 
                 consumeOptionalSemicolonAndEnd();
 
-                return SqlStatement{
-                    SqlStatementType::Insert,
-                    "",
-                    std::nullopt,
-                    std::move(insertStatement)
-                };
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::Insert;
+
+                parsedStatement.databaseName = "";
+
+                parsedStatement.table =
+                    std::nullopt;
+
+                parsedStatement.insert =
+                    std::move(insertStatement);
+
+                parsedStatement.select =
+                    std::nullopt;
+
+                return parsedStatement;
+            }
+
+            // Interpreta SELECT * FROM tabla.
+            SqlStatement parseSelect()
+            {
+                consume(
+                    TokenType::Asterisk,
+                    "Despues de SELECT se esperaba '*'."
+                );
+
+                consume(
+                    TokenType::FromKeyword,
+                    "Despues de '*' se esperaba FROM."
+                );
+
+                const std::string tableName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la tabla."
+                    );
+
+                consumeOptionalSemicolonAndEnd();
+
+                SelectStatement selectStatement;
+
+                selectStatement.selectAll = true;
+                selectStatement.columns.clear();
+                selectStatement.tableName =
+                    tableName;
+
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::Select;
+
+                parsedStatement.databaseName = "";
+
+                parsedStatement.table =
+                    std::nullopt;
+
+                parsedStatement.insert =
+                    std::nullopt;
+
+                parsedStatement.select =
+                    std::move(selectStatement);
+
+                return parsedStatement;
             }
 
             // Convierte un token de valor en una representación sintáctica.
@@ -253,6 +369,7 @@ namespace tinysql
                 );
             }
 
+            // Interpreta el nombre, tipo y restricciones de una columna.
             ColumnMetadata parseColumnDefinition()
             {
                 const std::string columnName =
@@ -261,6 +378,7 @@ namespace tinysql
                     );
 
                 std::size_t varcharLength = 0;
+
                 const DataType type =
                     parseDataType(varcharLength);
 
@@ -272,7 +390,7 @@ namespace tinysql
                     peek().type != TokenType::RightParenthesis &&
                     peek().type != TokenType::End &&
                     peek().type != TokenType::Semicolon
-                    )
+                )
                 {
                     if (match(TokenType::NullKeyword))
                     {
@@ -311,6 +429,7 @@ namespace tinysql
                 );
             }
 
+            // Interpreta los tipos permitidos por TinySQLDb.
             DataType parseDataType(
                 std::size_t& varcharLength
             )
@@ -346,8 +465,46 @@ namespace tinysql
                             "Se esperaba la longitud de VARCHAR."
                         );
 
-                    const unsigned long parsedLength =
-                        std::stoul(lengthToken.lexeme);
+                    // VARCHAR solo admite una longitud entera positiva.
+                    if (
+                        lengthToken.lexeme.empty() ||
+                        lengthToken.lexeme.front() == '-' ||
+                        lengthToken.lexeme.find('.') != std::string::npos
+                    )
+                    {
+                        throw std::runtime_error(
+                            "La longitud de VARCHAR debe ser un numero entero positivo."
+                        );
+                    }
+
+                    unsigned long long parsedLength = 0;
+
+                    try
+                    {
+                        std::size_t processedCharacters = 0;
+
+                        parsedLength =
+                            std::stoull(
+                                lengthToken.lexeme,
+                                &processedCharacters
+                            );
+
+                        if (
+                            processedCharacters !=
+                            lengthToken.lexeme.size()
+                        )
+                        {
+                            throw std::runtime_error(
+                                "Longitud incompleta."
+                            );
+                        }
+                    }
+                    catch (const std::exception&)
+                    {
+                        throw std::runtime_error(
+                            "La longitud de VARCHAR no es valida."
+                        );
+                    }
 
                     if (parsedLength == 0)
                     {
@@ -356,8 +513,20 @@ namespace tinysql
                         );
                     }
 
+                    if (
+                        parsedLength >
+                        std::numeric_limits<std::size_t>::max()
+                    )
+                    {
+                        throw std::runtime_error(
+                            "La longitud de VARCHAR es demasiado grande."
+                        );
+                    }
+
                     varcharLength =
-                        static_cast<std::size_t>(parsedLength);
+                        static_cast<std::size_t>(
+                            parsedLength
+                        );
 
                     consume(
                         TokenType::RightParenthesis,
@@ -372,6 +541,7 @@ namespace tinysql
                 );
             }
 
+            // Consume un token y comprueba que coincida con el tipo esperado.
             const SqlToken& consume(
                 TokenType expectedType,
                 const std::string& errorMessage
@@ -385,6 +555,7 @@ namespace tinysql
                 return tokens_[currentPosition_++];
             }
 
+            // Consume el token únicamente cuando coincide con el tipo solicitado.
             bool match(
                 TokenType expectedType
             )
@@ -398,6 +569,7 @@ namespace tinysql
                 return true;
             }
 
+            // Devuelve el token actual sin consumirlo.
             const SqlToken& peek() const
             {
                 if (currentPosition_ >= tokens_.size())
@@ -410,6 +582,7 @@ namespace tinysql
                 return tokens_[currentPosition_];
             }
 
+            // Consume un identificador y devuelve su texto.
             std::string consumeIdentifier(
                 const std::string& errorMessage
             )
@@ -423,6 +596,7 @@ namespace tinysql
                 return token.lexeme;
             }
 
+            // Acepta un punto y coma opcional y exige el final de la sentencia.
             void consumeOptionalSemicolonAndEnd()
             {
                 match(TokenType::Semicolon);
@@ -438,6 +612,7 @@ namespace tinysql
         };
     }
 
+    // Convierte el texto SQL en tokens y ejecuta el parser sobre ellos.
     SqlStatement SqlParser::parse(
         const std::string& statement
     ) const
@@ -451,3 +626,4 @@ namespace tinysql
         return parserState.parseStatement();
     }
 }
+

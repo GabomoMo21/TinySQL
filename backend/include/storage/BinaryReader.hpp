@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -7,7 +8,7 @@
 
 namespace tinysql
 {
-    // Permite recuperar valores básicos desde un archivo binario.
+    // Permite recuperar valores y bloques desde un archivo binario.
     class BinaryReader
     {
     public:
@@ -16,9 +17,18 @@ namespace tinysql
         );
 
         bool hasMoreData();
+
         std::uint32_t readUInt32();
         bool readBool();
         std::string readString();
+
+        void readBytes(
+            void* destination,
+            std::size_t size
+        );
+
+        std::uint64_t getPosition();
+        void seek(std::uint64_t position);
 
     private:
         std::ifstream file_;
