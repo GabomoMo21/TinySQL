@@ -18,6 +18,8 @@ add_library(TinySQLCore
     src/core/DateTime.cpp
     src/core/IndexMetadata.cpp
     src/core/IndexType.cpp
+    src/core/QueryRequest.cpp
+    src/core/QueryResult.cpp
     src/core/TableMetadata.cpp
     src/core/TinySqlError.cpp
     src/core/Value.cpp
