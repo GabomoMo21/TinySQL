@@ -43,6 +43,7 @@ target_link_libraries(TinySQLServer
         TinySQLCore
         TinySQLStorage
         TinySQLCatalog
+        TinySQLQuery
 )
 
 # Indica que el servidor utiliza como mínimo las funciones disponibles en Windows 10.
@@ -81,4 +82,23 @@ target_link_libraries(TinySQLCatalog
     PUBLIC
         TinySQLCore
         TinySQLStorage
+)
+
+# Esta biblioteca coordina la ejecución de operaciones solicitadas por SQL.
+add_library(TinySQLQuery
+    src/query/DatabaseService.cpp
+)
+
+# Permite utilizar includes como query/DatabaseService.hpp.
+target_include_directories(TinySQLQuery
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# La capa de consultas utiliza modelos, almacenamiento y catálogo.
+target_link_libraries(TinySQLQuery
+    PUBLIC
+        TinySQLCore
+        TinySQLStorage
+        TinySQLCatalog
 )

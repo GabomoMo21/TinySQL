@@ -2,11 +2,13 @@
 
 namespace tinysql
 {
-    // Agrupa los tipos de error que pueden producir las distintas capas del sistema.
+    // Identifica los distintos errores que pueden ocurrir dentro del sistema.
     enum class ErrorCode
     {
         None,
         InvalidSyntax,
+        InvalidIdentifier,
+        DatabaseAlreadyExists,
         DatabaseNotFound,
         TableNotFound,
         ColumnNotFound,

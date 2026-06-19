@@ -7,6 +7,7 @@
 
 #include "catalog/SystemDatabaseCatalog.hpp"
 
+
 int main()
 {
     // El servidor prepara las carpetas y el catálogo antes de aceptar solicitudes.
@@ -20,6 +21,8 @@ int main()
         );
 
         databaseCatalog.initialize();
+
+
 
         // La lectura inicial permite detectar archivos corruptos antes de levantar la API.
         databaseCatalog.getAllDatabases();

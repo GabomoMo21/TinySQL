@@ -2,6 +2,8 @@
 
 #include <filesystem>
 
+#include <string>
+
 namespace tinysql
 {
     // Centraliza las rutas utilizadas para guardar bases de datos y el catálogo.
@@ -14,6 +16,10 @@ namespace tinysql
         std::filesystem::path getDatabasesPath() const;
         std::filesystem::path getSystemCatalogPath() const;
         std::filesystem::path getSystemDatabasesFilePath() const;
+
+        std::filesystem::path getDatabasePath(
+            const std::string& databaseName
+        ) const;
 
         void ensureDirectoriesExist() const;
 

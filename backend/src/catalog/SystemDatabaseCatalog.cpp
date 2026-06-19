@@ -41,6 +41,8 @@ namespace tinysql
     std::vector<DatabaseMetadata>
         SystemDatabaseCatalog::getAllDatabases() const
     {
+        initialize();
+
         std::vector<DatabaseMetadata> databases;
 
         BinaryReader reader(filePath_);
@@ -53,5 +55,40 @@ namespace tinysql
         }
 
         return databases;
+    }
+
+    // Busca una base comparando su nombre con los registros del catálogo.
+    bool SystemDatabaseCatalog::databaseExists(
+        const std::string& databaseName
+    ) const
+    {
+        const std::vector<DatabaseMetadata> databases =
+            getAllDatabases();
+
+        for (const DatabaseMetadata& database : databases)
+        {
+            if (database.getName() == databaseName)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Agrega una base al final del catálogo después de comprobar que no esté repetida.
+    void SystemDatabaseCatalog::addDatabase(
+        const DatabaseMetadata& database
+    )
+    {
+        if (databaseExists(database.getName()))
+        {
+            throw std::runtime_error(
+                "La base de datos ya existe en el catalogo."
+            );
+        }
+
+        BinaryWriter writer(filePath_, true);
+        writer.writeString(database.getName());
     }
 }

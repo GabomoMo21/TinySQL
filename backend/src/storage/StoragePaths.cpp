@@ -40,4 +40,12 @@ namespace tinysql
         std::filesystem::create_directories(getDatabasesPath());
         std::filesystem::create_directories(getSystemCatalogPath());
     }
+
+    // Construye la ruta de una base de datos específica.
+    std::filesystem::path StoragePaths::getDatabasePath(
+        const std::string& databaseName
+    ) const
+    {
+        return getDatabasesPath() / databaseName;
+    }
 }
