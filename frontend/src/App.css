@@ -184,3 +184,15 @@
     width: 100%;
   }
 }
+.results-list {
+    display: grid;
+    gap: 18px;
+}
+
+.statement-result__title {
+    margin: 0 0 8px;
+}
+
+.statement-result__title code {
+    font-family: Consolas, "Courier New", monospace;
+}
