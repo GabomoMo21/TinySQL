@@ -15,6 +15,7 @@ add_library(TinySQLCore
     src/core/ColumnMetadata.cpp
     src/core/DataType.cpp
     src/core/DateTime.cpp
+    src/core/TableMetadata.cpp
     src/core/TinySqlError.cpp
     src/core/Value.cpp
 )
