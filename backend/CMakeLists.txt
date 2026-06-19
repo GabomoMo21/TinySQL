@@ -36,11 +36,13 @@ add_executable(TinySQLServer
     src/main.cpp
 )
 
-# El servidor puede utilizar Crow y los elementos compartidos del módulo core.
+# El servidor utiliza Crow, los modelos compartidos y la capa de almacenamiento.
 target_link_libraries(TinySQLServer
     PRIVATE
         Crow::Crow
         TinySQLCore
+        TinySQLStorage
+        TinySQLCatalog
 )
 
 # Indica que el servidor utiliza como mínimo las funciones disponibles en Windows 10.
@@ -49,3 +51,34 @@ target_compile_definitions(TinySQLServer
         _WIN32_WINNT=0x0A00
 )
 
+# Esta biblioteca contiene las funciones relacionadas con archivos y almacenamiento.
+add_library(TinySQLStorage
+    src/storage/BinaryReader.cpp
+    src/storage/BinaryWriter.cpp
+    src/storage/StoragePaths.cpp
+)
+
+# Permite incluir archivos utilizando rutas como storage/StoragePaths.hpp.
+target_include_directories(TinySQLStorage
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+
+# Esta biblioteca administra la metadata almacenada en el catálogo del sistema.
+add_library(TinySQLCatalog
+    src/catalog/SystemDatabaseCatalog.cpp
+)
+
+# Permite utilizar includes como catalog/SystemDatabaseCatalog.hpp.
+target_include_directories(TinySQLCatalog
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# El catálogo utiliza los modelos de core y las funciones binarias de storage.
+target_link_libraries(TinySQLCatalog
+    PUBLIC
+        TinySQLCore
+        TinySQLStorage
+)
