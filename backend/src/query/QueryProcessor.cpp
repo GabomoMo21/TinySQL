@@ -4,19 +4,19 @@
 #include <exception>
 
 #include "core/ErrorCode.hpp"
-#include "query/DatabaseStatement.hpp"
+#include "query/SqlStatement.hpp"
 
 namespace tinysql
 {
-    // Guarda la referencia al servicio que ejecuta operaciones de bases de datos.
     QueryProcessor::QueryProcessor(
-        DatabaseService& databaseService
+        DatabaseService& databaseService,
+        TableService& tableService
     )
-        : databaseService_(databaseService)
+        : databaseService_(databaseService),
+        tableService_(tableService)
     {
     }
 
-    // Analiza la sentencia, ejecuta la operación adecuada y mide su duración.
     QueryResult QueryProcessor::execute(
         const QueryRequest& request
     ) const
@@ -32,29 +32,35 @@ namespace tinysql
 
         try
         {
-            const DatabaseStatement statement =
-                databaseParser_.parse(
+            const SqlStatement statement =
+                sqlParser_.parse(
                     request.getStatement()
                 );
 
             switch (statement.type)
             {
-            case DatabaseStatementType::CreateDatabase:
+            case SqlStatementType::CreateDatabase:
                 result = databaseService_.createDatabase(
                     statement.databaseName
                 );
                 break;
 
-            case DatabaseStatementType::SetDatabase:
+            case SqlStatementType::SetDatabase:
                 result = databaseService_.setDatabase(
                     statement.databaseName
+                );
+                break;
+
+            case SqlStatementType::CreateTable:
+                result = tableService_.createTable(
+                    request.getDatabaseName(),
+                    statement.table.value()
                 );
                 break;
             }
         }
         catch (const std::exception& error)
         {
-            // Los errores producidos por el lexer o parser se consideran errores de sintaxis.
             result = QueryResult::failure(
                 ErrorCode::InvalidSyntax,
                 error.what()

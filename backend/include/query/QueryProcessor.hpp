@@ -2,8 +2,9 @@
 
 #include "core/QueryRequest.hpp"
 #include "core/QueryResult.hpp"
-#include "query/DatabaseParser.hpp"
 #include "query/DatabaseService.hpp"
+#include "query/SqlParser.hpp"
+#include "query/TableService.hpp"
 
 namespace tinysql
 {
@@ -11,8 +12,9 @@ namespace tinysql
     class QueryProcessor
     {
     public:
-        explicit QueryProcessor(
-            DatabaseService& databaseService
+        QueryProcessor(
+            DatabaseService& databaseService,
+            TableService& tableService
         );
 
         QueryResult execute(
@@ -20,7 +22,8 @@ namespace tinysql
         ) const;
 
     private:
-        DatabaseParser databaseParser_;
+        SqlParser sqlParser_;
         DatabaseService& databaseService_;
+        TableService& tableService_;
     };
 }

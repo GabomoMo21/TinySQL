@@ -12,6 +12,8 @@
 #include "catalog/SystemColumnCatalog.hpp"
 #include "catalog/SystemIndexCatalog.hpp"
 #include "catalog/SystemTableCatalog.hpp"
+#include "query/TableService.hpp"
+#include "storage/TableFileManager.hpp"
 
 int main()
 {
@@ -54,8 +56,18 @@ int main()
             databaseCatalog
         );
 
+        tinysql::TableFileManager tableFileManager(
+            storagePaths
+        );
+
+        tinysql::TableService tableService(
+            systemCatalog,
+            tableFileManager
+        );
+
         tinysql::QueryProcessor queryProcessor(
-            databaseService
+            databaseService,
+            tableService
         );
 
         // La aplicación utiliza CORS para permitir solicitudes del frontend.

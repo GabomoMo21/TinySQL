@@ -102,6 +102,7 @@ add_library(TinySQLQuery
     src/query/QueryProcessor.cpp
     src/query/SqlLexer.cpp
     src/query/SqlParser.cpp
+    src/query/TableService.cpp
 )
 
 # Permite utilizar includes como query/DatabaseService.hpp.
