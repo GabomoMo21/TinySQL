@@ -26,7 +26,6 @@ namespace tinysql
                 continue;
             }
 
-            // El punto y coma marca el final escrito de la sentencia.
             if (currentCharacter == ';')
             {
                 tokens.push_back(
@@ -34,6 +33,68 @@ namespace tinysql
                 );
 
                 ++position;
+                continue;
+            }
+
+            if (currentCharacter == '(')
+            {
+                tokens.push_back(
+                    { TokenType::LeftParenthesis, "(" }
+                );
+
+                ++position;
+                continue;
+            }
+
+            if (currentCharacter == ')')
+            {
+                tokens.push_back(
+                    { TokenType::RightParenthesis, ")" }
+                );
+
+                ++position;
+                continue;
+            }
+
+            if (currentCharacter == ',')
+            {
+                tokens.push_back(
+                    { TokenType::Comma, "," }
+                );
+
+                ++position;
+                continue;
+            }
+
+            // Los números se usan por ahora para VARCHAR(length).
+            if (std::isdigit(
+                static_cast<unsigned char>(currentCharacter)
+            ))
+            {
+                const std::size_t startPosition = position;
+
+                ++position;
+
+                while (
+                    position < statement.size() &&
+                    std::isdigit(
+                        static_cast<unsigned char>(statement[position])
+                    )
+                    )
+                {
+                    ++position;
+                }
+
+                tokens.push_back(
+                    {
+                        TokenType::Number,
+                        statement.substr(
+                            startPosition,
+                            position - startPosition
+                        )
+                    }
+                );
+
                 continue;
             }
 
@@ -79,6 +140,60 @@ namespace tinysql
                         { TokenType::DatabaseKeyword, lexeme }
                     );
                 }
+                else if (upperLexeme == "TABLE")
+                {
+                    tokens.push_back(
+                        { TokenType::TableKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "AS")
+                {
+                    tokens.push_back(
+                        { TokenType::AsKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "INTEGER")
+                {
+                    tokens.push_back(
+                        { TokenType::IntegerKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "DOUBLE")
+                {
+                    tokens.push_back(
+                        { TokenType::DoubleKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "VARCHAR")
+                {
+                    tokens.push_back(
+                        { TokenType::VarcharKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "DATETIME")
+                {
+                    tokens.push_back(
+                        { TokenType::DateTimeKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "NULL")
+                {
+                    tokens.push_back(
+                        { TokenType::NullKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "NOT")
+                {
+                    tokens.push_back(
+                        { TokenType::NotKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "UNIQUE")
+                {
+                    tokens.push_back(
+                        { TokenType::UniqueKeyword, lexeme }
+                    );
+                }
                 else
                 {
                     tokens.push_back(
@@ -102,7 +217,7 @@ namespace tinysql
         return tokens;
     }
 
-    // Comprueba si un carácter puede iniciar un identificador.
+    // Comprueba si un caracter puede iniciar un identificador.
     bool SqlLexer::isIdentifierStart(char character) const
     {
         const unsigned char checkedCharacter =
@@ -112,7 +227,7 @@ namespace tinysql
             character == '_';
     }
 
-    // Comprueba si un carácter puede aparecer después del inicio.
+    // Comprueba si un caracter puede aparecer después del inicio.
     bool SqlLexer::isIdentifierPart(char character) const
     {
         const unsigned char checkedCharacter =
@@ -122,7 +237,7 @@ namespace tinysql
             character == '_';
     }
 
-    // Convierte un texto a mayúsculas para reconocer palabras reservadas.
+    // Convierte un texto a mayusculas para reconocer palabras reservadas.
     std::string SqlLexer::toUpper(
         const std::string& text
     ) const

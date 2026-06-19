@@ -4,14 +4,32 @@
 
 namespace tinysql
 {
-    // Identifica los elementos que reconoce el lexer en esta primera versión.
+    // Identifica los elementos reconocidos por el lexer SQL.
     enum class TokenType
     {
         CreateKeyword,
         SetKeyword,
         DatabaseKeyword,
+        TableKeyword,
+        AsKeyword,
+
+        IntegerKeyword,
+        DoubleKeyword,
+        VarcharKeyword,
+        DateTimeKeyword,
+
+        NullKeyword,
+        NotKeyword,
+        UniqueKeyword,
+
         Identifier,
+        Number,
+
+        LeftParenthesis,
+        RightParenthesis,
+        Comma,
         Semicolon,
+
         End
     };
 
