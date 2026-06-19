@@ -86,7 +86,10 @@ target_link_libraries(TinySQLCatalog
 
 # Esta biblioteca coordina la ejecución de operaciones solicitadas por SQL.
 add_library(TinySQLQuery
+    src/query/DatabaseParser.cpp
     src/query/DatabaseService.cpp
+    src/query/QueryProcessor.cpp
+    src/query/SqlLexer.cpp
 )
 
 # Permite utilizar includes como query/DatabaseService.hpp.

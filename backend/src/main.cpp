@@ -8,6 +8,7 @@
 #include "catalog/SystemDatabaseCatalog.hpp"
 
 
+
 int main()
 {
     // El servidor prepara las carpetas y el catálogo antes de aceptar solicitudes.
