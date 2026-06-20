@@ -126,6 +126,25 @@ namespace tinysql
                         statement.deleteStatement.value()
                     );
                 break;
+            case SqlStatementType::Update:
+                if (!statement.update.has_value())
+                {
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para UPDATE."
+                        );
+
+                    break;
+                }
+
+                result =
+                    recordService_.updateRecords(
+                        request.getDatabaseName(),
+                        statement.update.value()
+                    );
+
+                break;
             }
         }
         catch (const std::exception& error)

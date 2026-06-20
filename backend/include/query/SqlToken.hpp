@@ -13,6 +13,7 @@ namespace tinysql
         DeleteKeyword,
         IntoKeyword,
         ValuesKeyword,
+        UpdateKeyword,
 
         DatabaseKeyword,
         TableKeyword,

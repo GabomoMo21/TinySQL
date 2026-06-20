@@ -16,6 +16,7 @@
 #include "query/OrderByClause.hpp"
 #include "query/WhereCondition.hpp"
 #include "storage/StoredRecord.hpp"
+#include "query/UpdateStatement.hpp"
 
 namespace tinysql
 {
@@ -760,6 +761,276 @@ namespace tinysql
             return QueryResult::failure(
                 ErrorCode::StorageError,
                 "No se pudieron eliminar los registros de la tabla."
+            );
+        }
+    }
+    // Actualiza los registros que cumplen WHERE.
+// Si no hay WHERE, actualiza todos los registros activos.
+    QueryResult RecordService::updateRecords(
+        const std::string& databaseName,
+        const UpdateStatement& statement
+    ) const
+    {
+        if (databaseName.empty())
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "Debe seleccionar una base de datos antes de actualizar registros."
+            );
+        }
+
+        if (!systemCatalog_.databaseExists(databaseName))
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "La base de datos activa no existe."
+            );
+        }
+
+        if (
+            !systemCatalog_.tableExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::TableNotFound,
+                "La tabla indicada no existe."
+            );
+        }
+
+        if (
+            !tableFileManager_.tableFileExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "La tabla existe en el catalogo, pero su archivo fisico no existe."
+            );
+        }
+
+        try
+        {
+            const TableMetadata table =
+                systemCatalog_.getTable(
+                    databaseName,
+                    statement.tableName
+                );
+
+            const std::vector<ColumnMetadata>& tableColumns =
+                table.getColumns();
+
+            std::size_t targetColumnIndex = 0;
+            bool targetColumnFound = false;
+
+            for (
+                std::size_t index = 0;
+                index < tableColumns.size();
+                ++index
+                )
+            {
+                if (
+                    tableColumns[index].getName() ==
+                    statement.columnName
+                    )
+                {
+                    targetColumnIndex = index;
+                    targetColumnFound = true;
+                    break;
+                }
+            }
+
+            if (!targetColumnFound)
+            {
+                return QueryResult::failure(
+                    ErrorCode::ColumnNotFound,
+                    "La columna indicada en SET no existe."
+                );
+            }
+
+            Value convertedNewValue;
+
+            const QueryResult newValueConversion =
+                valueConverter_.convertValue(
+                    tableColumns[targetColumnIndex],
+                    statement.newValue,
+                    convertedNewValue
+                );
+
+            if (!newValueConversion.isSuccess())
+            {
+                return newValueConversion;
+            }
+
+            const bool hasWhereCondition =
+                statement.whereCondition.has_value();
+
+            std::size_t whereColumnIndex = 0;
+            Value whereComparisonValue;
+
+            ComparisonOperator whereOperator =
+                ComparisonOperator::Equal;
+
+            if (hasWhereCondition)
+            {
+                const WhereCondition& condition =
+                    statement.whereCondition.value();
+
+                bool whereColumnFound = false;
+
+                for (
+                    std::size_t index = 0;
+                    index < tableColumns.size();
+                    ++index
+                    )
+                {
+                    if (
+                        tableColumns[index].getName() ==
+                        condition.columnName
+                        )
+                    {
+                        whereColumnIndex = index;
+                        whereColumnFound = true;
+                        break;
+                    }
+                }
+
+                if (!whereColumnFound)
+                {
+                    return QueryResult::failure(
+                        ErrorCode::ColumnNotFound,
+                        "La columna utilizada en WHERE no existe."
+                    );
+                }
+
+                whereOperator =
+                    condition.comparison;
+
+                if (whereOperator == ComparisonOperator::Like)
+                {
+                    if (
+                        tableColumns[whereColumnIndex].getType() !=
+                        DataType::Varchar
+                        )
+                    {
+                        return QueryResult::failure(
+                            ErrorCode::TypeMismatch,
+                            "LIKE solo puede utilizarse con columnas VARCHAR."
+                        );
+                    }
+
+                    if (
+                        condition.value.type !=
+                        SqlLiteralType::String
+                        )
+                    {
+                        return QueryResult::failure(
+                            ErrorCode::TypeMismatch,
+                            "El patron de LIKE debe ser un texto."
+                        );
+                    }
+
+                    whereComparisonValue =
+                        Value(condition.value.text);
+                }
+                else if (
+                    condition.value.type ==
+                    SqlLiteralType::Null
+                    )
+                {
+                    whereComparisonValue =
+                        Value();
+                }
+                else
+                {
+                    const QueryResult conversionResult =
+                        valueConverter_.convertValue(
+                            tableColumns[whereColumnIndex],
+                            condition.value,
+                            whereComparisonValue
+                        );
+
+                    if (!conversionResult.isSuccess())
+                    {
+                        return conversionResult;
+                    }
+                }
+            }
+
+            std::vector<StoredRecord> records =
+                tableFileManager_.readAllRecords(
+                    databaseName,
+                    table
+                );
+
+            std::size_t affectedRows = 0;
+
+            for (const StoredRecord& record : records)
+            {
+                bool shouldUpdate = true;
+
+                if (hasWhereCondition)
+                {
+                    if (
+                        whereColumnIndex >=
+                        record.values.size()
+                        )
+                    {
+                        throw std::runtime_error(
+                            "El registro no coincide con la metadata de la tabla."
+                        );
+                    }
+
+                    shouldUpdate =
+                        conditionEvaluator_.matches(
+                            record.values[whereColumnIndex],
+                            whereComparisonValue,
+                            tableColumns[whereColumnIndex].getType(),
+                            whereOperator
+                        );
+                }
+
+                if (!shouldUpdate)
+                {
+                    continue;
+                }
+
+                std::vector<Value> updatedValues =
+                    record.values;
+
+                updatedValues[targetColumnIndex] =
+                    convertedNewValue;
+
+                tableFileManager_.updateRecordAt(
+                    databaseName,
+                    table,
+                    record.offset,
+                    updatedValues
+                );
+
+                ++affectedRows;
+            }
+
+            QueryResult result =
+                QueryResult::success(
+                    "Actualizacion ejecutada correctamente. Filas afectadas: " +
+                    std::to_string(affectedRows) +
+                    "."
+                );
+
+            result.setAffectedRows(affectedRows);
+
+            return result;
+        }
+        catch (const std::exception&)
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "No se pudieron actualizar los registros de la tabla."
             );
         }
     }

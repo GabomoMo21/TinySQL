@@ -330,6 +330,12 @@ namespace tinysql
                         { TokenType::SelectKeyword, lexeme }
                     );
                 }
+                else if (upperLexeme == "UPDATE")
+                {
+                    tokens.push_back(
+                        { TokenType::UpdateKeyword, lexeme }
+                    );
+                }
                 else if (upperLexeme == "FROM")
                 {
                     tokens.push_back(

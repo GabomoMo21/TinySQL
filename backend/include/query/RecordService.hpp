@@ -11,6 +11,7 @@
 #include "query/ConditionEvaluator.hpp"
 #include "query/RecordQuickSort.hpp"
 #include "query/DeleteStatement.hpp"
+#include "query/UpdateStatement.hpp"
 
 namespace tinysql
 {
@@ -35,6 +36,10 @@ namespace tinysql
         QueryResult deleteRecords(
             const std::string& databaseName,
             const DeleteStatement& statement
+        ) const;
+        QueryResult updateRecords(
+            const std::string& databaseName,
+            const UpdateStatement& statement
         ) const;
     private:
         SystemCatalog& systemCatalog_;

@@ -62,6 +62,12 @@ namespace tinysql
             const TableMetadata& table,
             std::uint64_t offset
         ) const;
+        void updateRecordAt(
+            const std::string& databaseName,
+            const TableMetadata& table,
+            std::uint64_t offset,
+            const std::vector<Value>& values
+        ) const;
 
     private:
         std::uint32_t calculateColumnSize(

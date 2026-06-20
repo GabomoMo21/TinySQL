@@ -19,6 +19,7 @@
 #include "query/WhereCondition.hpp"
 #include "query/OrderByClause.hpp"
 #include "query/DeleteStatement.hpp"
+#include "query/UpdateStatement.hpp"
 
 namespace tinysql
 {
@@ -74,9 +75,13 @@ namespace tinysql
                 {
                     return parseDelete();
                 }
+                if (match(TokenType::UpdateKeyword))
+                {
+                    return parseUpdate();
+                }
 
                 throw std::runtime_error(
-                    "La sentencia debe comenzar con CREATE, SET, INSERT, SELECT o DELETE."
+                    "La sentencia debe comenzar con CREATE, SET, INSERT, SELECT, DELETE o UPDATE."
                 );
             }
 
@@ -276,6 +281,64 @@ namespace tinysql
 
                 parsedStatement.select =
                     std::nullopt;
+
+                return parsedStatement;
+            }
+            // Interpreta UPDATE tabla SET columna = valor [WHERE condicion].
+            SqlStatement parseUpdate()
+            {
+                UpdateStatement updateStatement;
+
+                updateStatement.tableName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la tabla despues de UPDATE."
+                    );
+
+                consume(
+                    TokenType::SetKeyword,
+                    "Despues del nombre de la tabla se esperaba SET."
+                );
+
+                updateStatement.columnName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la columna a actualizar."
+                    );
+
+                if (
+                    match(TokenType::Equal))
+                {
+                    // Operador aceptado.
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "Despues de la columna se esperaba '='."
+                    );
+                }
+
+                updateStatement.newValue =
+                    parseLiteral();
+
+                if (match(TokenType::WhereKeyword))
+                {
+                    updateStatement.whereCondition =
+                        parseWhereCondition();
+                }
+
+                consumeOptionalSemicolonAndEnd();
+
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::Update;
+
+                parsedStatement.databaseName = "";
+                parsedStatement.table = std::nullopt;
+                parsedStatement.insert = std::nullopt;
+                parsedStatement.select = std::nullopt;
+                parsedStatement.deleteStatement = std::nullopt;
+                parsedStatement.update =
+                    std::move(updateStatement);
 
                 return parsedStatement;
             }
