@@ -18,6 +18,7 @@
 #include "query/SqlToken.hpp"
 #include "query/WhereCondition.hpp"
 #include "query/OrderByClause.hpp"
+#include "query/DeleteStatement.hpp"
 
 namespace tinysql
 {
@@ -69,9 +70,13 @@ namespace tinysql
                 {
                     return parseSelect();
                 }
+                if (match(TokenType::DeleteKeyword))
+                {
+                    return parseDelete();
+                }
 
                 throw std::runtime_error(
-                    "La sentencia debe comenzar con CREATE, SET, INSERT o SELECT."
+                    "La sentencia debe comenzar con CREATE, SET, INSERT, SELECT o DELETE."
                 );
             }
 
@@ -341,6 +346,44 @@ namespace tinysql
 
                 parsedStatement.select =
                     std::move(selectStatement);
+
+                return parsedStatement;
+            }
+            // Interpreta DELETE FROM tabla [WHERE condicion].
+            SqlStatement parseDelete()
+            {
+                consume(
+                    TokenType::FromKeyword,
+                    "Despues de DELETE se esperaba FROM."
+                );
+
+                DeleteStatement deleteStatement;
+
+                deleteStatement.tableName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la tabla."
+                    );
+
+                if (match(TokenType::WhereKeyword))
+                {
+                    deleteStatement.whereCondition =
+                        parseWhereCondition();
+                }
+
+                consumeOptionalSemicolonAndEnd();
+
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::Delete;
+
+                parsedStatement.databaseName = "";
+                parsedStatement.table = std::nullopt;
+                parsedStatement.insert = std::nullopt;
+                parsedStatement.select = std::nullopt;
+
+                parsedStatement.deleteStatement =
+                    std::move(deleteStatement);
 
                 return parsedStatement;
             }

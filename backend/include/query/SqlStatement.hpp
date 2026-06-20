@@ -6,7 +6,7 @@
 #include "core/TableMetadata.hpp"
 #include "query/InsertStatement.hpp"
 #include "query/SelectStatement.hpp"
-
+#include "query/DeleteStatement.hpp"
 namespace tinysql
 {
     // Identifica las sentencias que puede procesar actualmente TinySQLDb.
@@ -16,7 +16,8 @@ namespace tinysql
         SetDatabase,
         CreateTable,
         Insert,
-        Select
+        Select,
+        Delete
     };
 
     // Reúne la información producida por el parser para cada sentencia.
@@ -33,5 +34,8 @@ namespace tinysql
 
         std::optional<SelectStatement> select =
             std::nullopt;
+        std::optional<DeleteStatement> deleteStatement =
+            std::nullopt;
     };
+
 }

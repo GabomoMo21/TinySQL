@@ -10,6 +10,7 @@
 #include "storage/TableFileManager.hpp"
 #include "query/ConditionEvaluator.hpp"
 #include "query/RecordQuickSort.hpp"
+#include "query/DeleteStatement.hpp"
 
 namespace tinysql
 {
@@ -31,7 +32,10 @@ namespace tinysql
             const std::string& databaseName,
             const SelectStatement& statement
         ) const;
-
+        QueryResult deleteRecords(
+            const std::string& databaseName,
+            const DeleteStatement& statement
+        ) const;
     private:
         SystemCatalog& systemCatalog_;
         const TableFileManager& tableFileManager_;

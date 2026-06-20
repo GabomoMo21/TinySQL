@@ -540,5 +540,228 @@ namespace tinysql
             );
         }
     }
+    // Elimina lógicamente los registros que cumplen WHERE.
+// Si no hay WHERE, elimina todos los registros activos.
+    QueryResult RecordService::deleteRecords(
+        const std::string& databaseName,
+        const DeleteStatement& statement
+    ) const
+    {
+        if (databaseName.empty())
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "Debe seleccionar una base de datos antes de eliminar registros."
+            );
+        }
+
+        if (!systemCatalog_.databaseExists(databaseName))
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "La base de datos activa no existe."
+            );
+        }
+
+        if (
+            !systemCatalog_.tableExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::TableNotFound,
+                "La tabla indicada no existe."
+            );
+        }
+
+        if (
+            !tableFileManager_.tableFileExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "La tabla existe en el catalogo, pero su archivo fisico no existe."
+            );
+        }
+
+        try
+        {
+            const TableMetadata table =
+                systemCatalog_.getTable(
+                    databaseName,
+                    statement.tableName
+                );
+
+            const std::vector<ColumnMetadata>& tableColumns =
+                table.getColumns();
+
+            const bool hasWhereCondition =
+                statement.whereCondition.has_value();
+
+            std::size_t whereColumnIndex = 0;
+            Value whereComparisonValue;
+
+            ComparisonOperator whereOperator =
+                ComparisonOperator::Equal;
+
+            if (hasWhereCondition)
+            {
+                const WhereCondition& condition =
+                    statement.whereCondition.value();
+
+                bool whereColumnFound = false;
+
+                for (
+                    std::size_t index = 0;
+                    index < tableColumns.size();
+                    ++index
+                    )
+                {
+                    if (
+                        tableColumns[index].getName() ==
+                        condition.columnName
+                        )
+                    {
+                        whereColumnIndex = index;
+                        whereColumnFound = true;
+                        break;
+                    }
+                }
+
+                if (!whereColumnFound)
+                {
+                    return QueryResult::failure(
+                        ErrorCode::ColumnNotFound,
+                        "La columna " +
+                        condition.columnName +
+                        " utilizada en WHERE no existe."
+                    );
+                }
+
+                whereOperator =
+                    condition.comparison;
+
+                if (whereOperator == ComparisonOperator::Like)
+                {
+                    if (
+                        tableColumns[whereColumnIndex].getType() !=
+                        DataType::Varchar
+                        )
+                    {
+                        return QueryResult::failure(
+                            ErrorCode::TypeMismatch,
+                            "LIKE solo puede utilizarse con columnas VARCHAR."
+                        );
+                    }
+
+                    if (
+                        condition.value.type !=
+                        SqlLiteralType::String
+                        )
+                    {
+                        return QueryResult::failure(
+                            ErrorCode::TypeMismatch,
+                            "El patron de LIKE debe ser un texto."
+                        );
+                    }
+
+                    whereComparisonValue =
+                        Value(condition.value.text);
+                }
+                else if (
+                    condition.value.type ==
+                    SqlLiteralType::Null
+                    )
+                {
+                    whereComparisonValue =
+                        Value();
+                }
+                else
+                {
+                    const QueryResult conversionResult =
+                        valueConverter_.convertValue(
+                            tableColumns[whereColumnIndex],
+                            condition.value,
+                            whereComparisonValue
+                        );
+
+                    if (!conversionResult.isSuccess())
+                    {
+                        return conversionResult;
+                    }
+                }
+            }
+
+            std::vector<StoredRecord> records =
+                tableFileManager_.readAllRecords(
+                    databaseName,
+                    table
+                );
+
+            std::size_t affectedRows = 0;
+
+            for (const StoredRecord& record : records)
+            {
+                bool shouldDelete = true;
+
+                if (hasWhereCondition)
+                {
+                    if (
+                        whereColumnIndex >=
+                        record.values.size()
+                        )
+                    {
+                        throw std::runtime_error(
+                            "El registro no coincide con la metadata de la tabla."
+                        );
+                    }
+
+                    shouldDelete =
+                        conditionEvaluator_.matches(
+                            record.values[whereColumnIndex],
+                            whereComparisonValue,
+                            tableColumns[whereColumnIndex].getType(),
+                            whereOperator
+                        );
+                }
+
+                if (!shouldDelete)
+                {
+                    continue;
+                }
+
+                tableFileManager_.markRecordDeleted(
+                    databaseName,
+                    table,
+                    record.offset
+                );
+
+                ++affectedRows;
+            }
+
+            QueryResult result =
+                QueryResult::success(
+                    "Eliminacion ejecutada correctamente. Filas afectadas: " +
+                    std::to_string(affectedRows) +
+                    "."
+                );
+
+            result.setAffectedRows(affectedRows);
+
+            return result;
+        }
+        catch (const std::exception&)
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "No se pudieron eliminar los registros de la tabla."
+            );
+        }
+    }
 }
 

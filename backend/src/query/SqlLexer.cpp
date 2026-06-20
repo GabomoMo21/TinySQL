@@ -311,6 +311,12 @@ namespace tinysql
                         { TokenType::InsertKeyword, lexeme }
                     );
                 }
+                else if (upperLexeme == "DELETE")
+                {
+                    tokens.push_back(
+                        { TokenType::DeleteKeyword, lexeme }
+                    );
+                }
                 else if (upperLexeme == "INTO")
                 {
                     tokens.push_back(

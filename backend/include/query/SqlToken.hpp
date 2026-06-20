@@ -10,6 +10,7 @@ namespace tinysql
         CreateKeyword,
         SetKeyword,
         InsertKeyword,
+        DeleteKeyword,
         IntoKeyword,
         ValuesKeyword,
 
