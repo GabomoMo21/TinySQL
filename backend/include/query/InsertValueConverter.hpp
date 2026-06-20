@@ -10,7 +10,7 @@
 
 namespace tinysql
 {
-    // Valida los valores de INSERT y los convierte a los tipos internos.
+    // Valida los literales SQL y los convierte a los tipos internos.
     class InsertValueConverter
     {
     public:
@@ -20,7 +20,7 @@ namespace tinysql
             std::vector<Value>& convertedValues
         ) const;
 
-    private:
+        // Convierte un solo literal según la definición de una columna.
         QueryResult convertValue(
             const ColumnMetadata& column,
             const SqlLiteral& literal,

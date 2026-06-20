@@ -8,6 +8,8 @@
 #include "query/InsertValueConverter.hpp"
 #include "query/SelectStatement.hpp"
 #include "storage/TableFileManager.hpp"
+#include "query/ConditionEvaluator.hpp"
+#include "query/RecordQuickSort.hpp"
 
 namespace tinysql
 {
@@ -25,7 +27,7 @@ namespace tinysql
             const InsertStatement& statement
         ) const;
 
-        QueryResult selectAll(
+        QueryResult select(
             const std::string& databaseName,
             const SelectStatement& statement
         ) const;
@@ -34,5 +36,7 @@ namespace tinysql
         SystemCatalog& systemCatalog_;
         const TableFileManager& tableFileManager_;
         InsertValueConverter valueConverter_;
+        ConditionEvaluator conditionEvaluator_;
+        RecordQuickSort recordQuickSort_;
     };
 }

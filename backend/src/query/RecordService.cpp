@@ -1,18 +1,20 @@
 #include "query/RecordService.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <exception>
-#include <vector>
-
-#include "core/ErrorCode.hpp"
-#include "core/TableMetadata.hpp"
-#include "core/Value.hpp"
-
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "core/ColumnMetadata.hpp"
+#include "core/DataType.hpp"
+#include "core/ErrorCode.hpp"
+#include "core/TableMetadata.hpp"
+#include "core/Value.hpp"
+#include "query/OrderByClause.hpp"
+#include "query/WhereCondition.hpp"
 #include "storage/StoredRecord.hpp"
 
 namespace tinysql
@@ -77,7 +79,7 @@ namespace tinysql
 
         try
         {
-            // El catálogo reconstruye la tabla junto con sus columnas en el orden original.
+            // El catálogo reconstruye la tabla y conserva el orden original de sus columnas.
             const TableMetadata table =
                 systemCatalog_.getTable(
                     databaseName,
@@ -98,7 +100,7 @@ namespace tinysql
                 return conversionResult;
             }
 
-            // El offset se utilizará posteriormente para registrar el valor en los índices.
+            // El offset se utilizará posteriormente para actualizar los índices.
             const std::uint64_t recordOffset =
                 tableFileManager_.appendRecord(
                     databaseName,
@@ -106,13 +108,12 @@ namespace tinysql
                     convertedValues
                 );
 
-            // El offset todavía no debe enviarse al cliente, pero se conserva la variable
-            // porque será necesaria cuando existan BST y B-Tree.
             static_cast<void>(recordOffset);
 
-            QueryResult result = QueryResult::success(
-                "Registro insertado correctamente."
-            );
+            QueryResult result =
+                QueryResult::success(
+                    "Registro insertado correctamente."
+                );
 
             result.setAffectedRows(1);
 
@@ -127,8 +128,8 @@ namespace tinysql
         }
     }
 
-    // Recupera todos los registros activos y los prepara como resultado tabular.
-    QueryResult RecordService::selectAll(
+    // Recupera registros, aplica WHERE, ordena y proyecta las columnas solicitadas.
+    QueryResult RecordService::select(
         const std::string& databaseName,
         const SelectStatement& statement
     ) const
@@ -183,42 +184,349 @@ namespace tinysql
                     statement.tableName
                 );
 
+            const std::vector<ColumnMetadata>& tableColumns =
+                table.getColumns();
+
+            std::vector<std::size_t> selectedIndexes;
+            std::vector<std::string> selectedNames;
+
+            // SELECT * conserva todas las columnas en el orden de creación.
+            if (statement.selectAll)
+            {
+                selectedIndexes.reserve(
+                    tableColumns.size()
+                );
+
+                selectedNames.reserve(
+                    tableColumns.size()
+                );
+
+                for (
+                    std::size_t index = 0;
+                    index < tableColumns.size();
+                    ++index
+                    )
+                {
+                    selectedIndexes.push_back(index);
+
+                    selectedNames.push_back(
+                        tableColumns[index].getName()
+                    );
+                }
+            }
+            else
+            {
+                selectedIndexes.reserve(
+                    statement.columns.size()
+                );
+
+                selectedNames.reserve(
+                    statement.columns.size()
+                );
+
+                // Cada columna solicitada se relaciona con su posición física.
+                for (
+                    const std::string& requestedColumn :
+                    statement.columns
+                    )
+                {
+                    bool columnFound = false;
+
+                    for (
+                        std::size_t index = 0;
+                        index < tableColumns.size();
+                        ++index
+                        )
+                    {
+                        if (
+                            tableColumns[index].getName() ==
+                            requestedColumn
+                            )
+                        {
+                            selectedIndexes.push_back(index);
+
+                            selectedNames.push_back(
+                                tableColumns[index].getName()
+                            );
+
+                            columnFound = true;
+                            break;
+                        }
+                    }
+
+                    if (!columnFound)
+                    {
+                        return QueryResult::failure(
+                            ErrorCode::ColumnNotFound,
+                            "La columna " +
+                            requestedColumn +
+                            " no existe en la tabla."
+                        );
+                    }
+                }
+            }
+
+            const bool hasWhereCondition =
+                statement.whereCondition.has_value();
+
+            std::size_t whereColumnIndex = 0;
+
+            Value whereComparisonValue;
+
+            ComparisonOperator whereOperator =
+                ComparisonOperator::Equal;
+
+            // Prepara la columna, el operador y el valor utilizados por WHERE.
+            if (hasWhereCondition)
+            {
+                const WhereCondition& condition =
+                    statement.whereCondition.value();
+
+                bool whereColumnFound = false;
+
+                for (
+                    std::size_t index = 0;
+                    index < tableColumns.size();
+                    ++index
+                    )
+                {
+                    if (
+                        tableColumns[index].getName() ==
+                        condition.columnName
+                        )
+                    {
+                        whereColumnIndex = index;
+                        whereColumnFound = true;
+                        break;
+                    }
+                }
+
+                if (!whereColumnFound)
+                {
+                    return QueryResult::failure(
+                        ErrorCode::ColumnNotFound,
+                        "La columna " +
+                        condition.columnName +
+                        " utilizada en WHERE no existe."
+                    );
+                }
+
+                whereOperator =
+                    condition.comparison;
+
+                // LIKE solo admite patrones aplicados sobre columnas VARCHAR.
+                if (whereOperator == ComparisonOperator::Like)
+                {
+                    if (
+                        tableColumns[whereColumnIndex].getType() !=
+                        DataType::Varchar
+                        )
+                    {
+                        return QueryResult::failure(
+                            ErrorCode::TypeMismatch,
+                            "LIKE solo puede utilizarse con columnas VARCHAR."
+                        );
+                    }
+
+                    if (
+                        condition.value.type !=
+                        SqlLiteralType::String
+                        )
+                    {
+                        return QueryResult::failure(
+                            ErrorCode::TypeMismatch,
+                            "El patron de LIKE debe ser un texto."
+                        );
+                    }
+
+                    // El patrón no se almacena, por lo que no se limita al tamaño del VARCHAR.
+                    whereComparisonValue =
+                        Value(condition.value.text);
+                }
+                else if (
+                    condition.value.type ==
+                    SqlLiteralType::Null
+                    )
+                {
+                    whereComparisonValue =
+                        Value();
+                }
+                else
+                {
+                    const QueryResult conversionResult =
+                        valueConverter_.convertValue(
+                            tableColumns[whereColumnIndex],
+                            condition.value,
+                            whereComparisonValue
+                        );
+
+                    if (!conversionResult.isSuccess())
+                    {
+                        return conversionResult;
+                    }
+                }
+            }
+
+            const bool hasOrderBy =
+                statement.orderBy.has_value();
+
+            std::size_t orderColumnIndex = 0;
+
+            SortDirection orderDirection =
+                SortDirection::Ascending;
+
+            // Localiza la posición real de la columna indicada en ORDER BY.
+            if (hasOrderBy)
+            {
+                const OrderByClause& orderBy =
+                    statement.orderBy.value();
+
+                bool orderColumnFound = false;
+
+                for (
+                    std::size_t index = 0;
+                    index < tableColumns.size();
+                    ++index
+                    )
+                {
+                    if (
+                        tableColumns[index].getName() ==
+                        orderBy.columnName
+                        )
+                    {
+                        orderColumnIndex = index;
+                        orderColumnFound = true;
+                        break;
+                    }
+                }
+
+                if (!orderColumnFound)
+                {
+                    return QueryResult::failure(
+                        ErrorCode::ColumnNotFound,
+                        "La columna " +
+                        orderBy.columnName +
+                        " utilizada en ORDER BY no existe."
+                    );
+                }
+
+                orderDirection =
+                    orderBy.direction;
+            }
+
+            // La lectura omite automáticamente los registros eliminados.
             std::vector<StoredRecord> records =
                 tableFileManager_.readAllRecords(
                     databaseName,
                     table
                 );
 
-            QueryResult result =
-                QueryResult::success(
-                    "Consulta ejecutada correctamente. Filas encontradas: " +
-                    std::to_string(records.size()) +
-                    "."
-                );
+            std::vector<StoredRecord> filteredRecords;
 
-            std::vector<std::string> columnNames;
-
-            columnNames.reserve(
-                table.getColumnCount()
+            filteredRecords.reserve(
+                records.size()
             );
 
-            // Los encabezados se mantienen en el orden registrado en SystemColumns.
-            for (const ColumnMetadata& column : table.getColumns())
+            // WHERE se aplica antes del ordenamiento.
+            for (StoredRecord& record : records)
             {
-                columnNames.push_back(
-                    column.getName()
+                if (hasWhereCondition)
+                {
+                    if (
+                        whereColumnIndex >=
+                        record.values.size()
+                        )
+                    {
+                        throw std::runtime_error(
+                            "El registro no coincide con la metadata de la tabla."
+                        );
+                    }
+
+                    const bool matches =
+                        conditionEvaluator_.matches(
+                            record.values[whereColumnIndex],
+                            whereComparisonValue,
+                            tableColumns[whereColumnIndex].getType(),
+                            whereOperator
+                        );
+
+                    if (!matches)
+                    {
+                        continue;
+                    }
+                }
+
+                filteredRecords.push_back(
+                    std::move(record)
                 );
             }
 
-            result.setColumns(
-                std::move(columnNames)
+            // Quicksort ordena los registros completos antes de proyectar columnas.
+            if (hasOrderBy)
+            {
+                recordQuickSort_.sort(
+                    filteredRecords,
+                    orderColumnIndex,
+                    tableColumns[orderColumnIndex].getType(),
+                    orderDirection
+                );
+            }
+
+            std::vector<std::vector<Value>> projectedRows;
+
+            projectedRows.reserve(
+                filteredRecords.size()
             );
 
-            // Cada registro se entrega como una fila del resultado.
-            for (StoredRecord& record : records)
+            // La proyección conserva solamente las columnas solicitadas.
+            for (const StoredRecord& record : filteredRecords)
+            {
+                std::vector<Value> projectedRow;
+
+                projectedRow.reserve(
+                    selectedIndexes.size()
+                );
+
+                for (
+                    const std::size_t selectedIndex :
+                selectedIndexes
+                    )
+                {
+                    if (
+                        selectedIndex >=
+                        record.values.size()
+                        )
+                    {
+                        throw std::runtime_error(
+                            "El registro no coincide con la metadata de la tabla."
+                        );
+                    }
+
+                    projectedRow.push_back(
+                        record.values[selectedIndex]
+                    );
+                }
+
+                projectedRows.push_back(
+                    std::move(projectedRow)
+                );
+            }
+
+            QueryResult result =
+                QueryResult::success(
+                    "Consulta ejecutada correctamente. Filas encontradas: " +
+                    std::to_string(projectedRows.size()) +
+                    "."
+                );
+
+            result.setColumns(
+                std::move(selectedNames)
+            );
+
+            for (std::vector<Value>& row : projectedRows)
             {
                 result.addRow(
-                    std::move(record.values)
+                    std::move(row)
                 );
             }
 
@@ -228,8 +536,9 @@ namespace tinysql
         {
             return QueryResult::failure(
                 ErrorCode::StorageError,
-                "No se pudieron leer los registros de la tabla."
+                "No se pudieron leer, comparar u ordenar los registros de la tabla."
             );
         }
     }
 }
+

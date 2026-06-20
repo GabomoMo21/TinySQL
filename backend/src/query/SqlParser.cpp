@@ -16,6 +16,8 @@
 #include "query/SqlLexer.hpp"
 #include "query/SqlLiteral.hpp"
 #include "query/SqlToken.hpp"
+#include "query/WhereCondition.hpp"
+#include "query/OrderByClause.hpp"
 
 namespace tinysql
 {
@@ -273,32 +275,60 @@ namespace tinysql
                 return parsedStatement;
             }
 
-            // Interpreta SELECT * FROM tabla.
+            // Interpreta SELECT con proyección, WHERE y ORDER BY opcionales.
             SqlStatement parseSelect()
             {
-                consume(
-                    TokenType::Asterisk,
-                    "Despues de SELECT se esperaba '*'."
-                );
+                SelectStatement selectStatement;
+
+                if (match(TokenType::Asterisk))
+                {
+                    selectStatement.selectAll = true;
+                }
+                else
+                {
+                    selectStatement.selectAll = false;
+
+                    selectStatement.columns.push_back(
+                        consumeIdentifier(
+                            "Despues de SELECT se esperaba '*' o un nombre de columna."
+                        )
+                    );
+
+                    while (match(TokenType::Comma))
+                    {
+                        selectStatement.columns.push_back(
+                            consumeIdentifier(
+                                "Despues de la coma se esperaba otro nombre de columna."
+                            )
+                        );
+                    }
+                }
 
                 consume(
                     TokenType::FromKeyword,
-                    "Despues de '*' se esperaba FROM."
+                    "Despues de las columnas se esperaba FROM."
                 );
 
-                const std::string tableName =
+                selectStatement.tableName =
                     consumeIdentifier(
                         "Se esperaba el nombre de la tabla."
                     );
 
+                // WHERE debe escribirse antes de ORDER BY.
+                if (match(TokenType::WhereKeyword))
+                {
+                    selectStatement.whereCondition =
+                        parseWhereCondition();
+                }
+
+                // ORDER BY se procesa después de filtrar la consulta.
+                if (match(TokenType::OrderKeyword))
+                {
+                    selectStatement.orderBy =
+                        parseOrderByClause();
+                }
+
                 consumeOptionalSemicolonAndEnd();
-
-                SelectStatement selectStatement;
-
-                selectStatement.selectAll = true;
-                selectStatement.columns.clear();
-                selectStatement.tableName =
-                    tableName;
 
                 SqlStatement parsedStatement;
 
@@ -306,17 +336,150 @@ namespace tinysql
                     SqlStatementType::Select;
 
                 parsedStatement.databaseName = "";
-
-                parsedStatement.table =
-                    std::nullopt;
-
-                parsedStatement.insert =
-                    std::nullopt;
+                parsedStatement.table = std::nullopt;
+                parsedStatement.insert = std::nullopt;
 
                 parsedStatement.select =
                     std::move(selectStatement);
 
                 return parsedStatement;
+            }
+
+            // Interpreta ORDER BY columna con una dirección opcional.
+            OrderByClause parseOrderByClause()
+            {
+                consume(
+                    TokenType::ByKeyword,
+                    "Despues de ORDER se esperaba BY."
+                );
+
+                OrderByClause orderBy;
+
+                orderBy.columnName =
+                    consumeIdentifier(
+                        "Despues de ORDER BY se esperaba el nombre de una columna."
+                    );
+
+                if (match(TokenType::AscKeyword))
+                {
+                    orderBy.direction =
+                        SortDirection::Ascending;
+                }
+                else if (match(TokenType::DescKeyword))
+                {
+                    orderBy.direction =
+                        SortDirection::Descending;
+                }
+
+                return orderBy;
+            }
+
+            // Interpreta una condición simple con columna, operador y valor.
+            WhereCondition parseWhereCondition()
+            {
+                WhereCondition condition;
+
+                condition.columnName =
+                    consumeIdentifier(
+                        "Despues de WHERE se esperaba el nombre de una columna."
+                    );
+
+                if (match(TokenType::Equal))
+                {
+                    condition.comparison =
+                        ComparisonOperator::Equal;
+                }
+                else if (match(TokenType::GreaterThan))
+                {
+                    condition.comparison =
+                        ComparisonOperator::GreaterThan;
+                }
+                else if (match(TokenType::LessThan))
+                {
+                    condition.comparison =
+                        ComparisonOperator::LessThan;
+                }
+                else if (match(TokenType::NotKeyword))
+                {
+                    condition.comparison =
+                        ComparisonOperator::NotEqual;
+                }
+                else if (match(TokenType::LikeKeyword))
+                {
+                    condition.comparison =
+                        ComparisonOperator::Like;
+
+                    condition.value =
+                        parseLikePattern();
+
+                    return condition;
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "Se esperaba un operador valido despues de la columna del WHERE."
+                    );
+                }
+
+                condition.value =
+                    parseLiteral();
+
+                return condition;
+            }
+
+            // Interpreta patrones LIKE escritos con o sin comillas.
+            SqlLiteral parseLikePattern()
+            {
+                // Las comillas permiten patrones con espacios o caracteres adicionales.
+                if (peek().type == TokenType::StringLiteral)
+                {
+                    const SqlToken& patternToken =
+                        consume(
+                            TokenType::StringLiteral,
+                            "Se esperaba un patron de texto despues de LIKE."
+                        );
+
+                    return SqlLiteral{
+                        SqlLiteralType::String,
+                        patternToken.lexeme
+                    };
+                }
+
+                std::string pattern;
+
+                // El primer asterisco permite buscar cualquier contenido antes del texto.
+                if (match(TokenType::Asterisk))
+                {
+                    pattern.push_back('*');
+                }
+
+                if (peek().type == TokenType::Identifier)
+                {
+                    const SqlToken& textToken =
+                        consume(
+                            TokenType::Identifier,
+                            "Se esperaba el texto del patron LIKE."
+                        );
+
+                    pattern += textToken.lexeme;
+                }
+                else if (pattern != "*")
+                {
+                    throw std::runtime_error(
+                        "Se esperaba un patron valido despues de LIKE."
+                    );
+                }
+
+                // El último asterisco permite buscar cualquier contenido después del texto.
+                if (match(TokenType::Asterisk))
+                {
+                    pattern.push_back('*');
+                }
+
+                return SqlLiteral{
+                    SqlLiteralType::String,
+                    pattern
+                };
             }
 
             // Convierte un token de valor en una representación sintáctica.

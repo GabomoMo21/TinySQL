@@ -39,6 +39,18 @@ namespace tinysql
         FromKeyword,
         Asterisk,
 
+        WhereKeyword,
+
+        GreaterThan,
+        LessThan,
+        Equal,
+        LikeKeyword,
+
+        OrderKeyword,
+        ByKeyword,
+        AscKeyword,
+        DescKeyword,
+
         End
     };
 

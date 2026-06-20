@@ -112,8 +112,9 @@ namespace tinysql
                     break;
                 }
 
+                // El servicio decide si debe devolver todas las columnas o solo una proyección.
                 result =
-                    recordService_.selectAll(
+                    recordService_.select(
                         request.getDatabaseName(),
                         statement.select.value()
                     );

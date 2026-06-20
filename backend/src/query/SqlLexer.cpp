@@ -69,6 +69,56 @@ namespace tinysql
                 continue;
             }
 
+            // El símbolo mayor que se utiliza en condiciones WHERE.
+            if (currentCharacter == '>')
+            {
+                tokens.push_back(
+                    { TokenType::GreaterThan, ">" }
+                );
+
+                ++position;
+                continue;
+            }
+
+            // El símbolo menor que se utiliza en condiciones WHERE.
+            if (currentCharacter == '<')
+            {
+                tokens.push_back(
+                    { TokenType::LessThan, "<" }
+                );
+
+                ++position;
+                continue;
+            }
+
+            // Se aceptan tanto = como == para igualdad.
+            if (currentCharacter == '=')
+            {
+                const std::size_t startPosition = position;
+
+                ++position;
+
+                if (
+                    position < statement.size() &&
+                    statement[position] == '='
+                    )
+                {
+                    ++position;
+                }
+
+                tokens.push_back(
+                    {
+                        TokenType::Equal,
+                        statement.substr(
+                            startPosition,
+                            position - startPosition
+                        )
+                    }
+                );
+
+                continue;
+            }
+
             if (currentCharacter == ',')
             {
                 tokens.push_back(
@@ -278,6 +328,47 @@ namespace tinysql
                 {
                     tokens.push_back(
                         { TokenType::FromKeyword, lexeme }
+                    );
+                }
+
+                else if (upperLexeme == "WHERE")
+                {
+                    tokens.push_back(
+                        { TokenType::WhereKeyword, lexeme }
+                    );
+                }
+
+                // ORDER y BY definen el ordenamiento de un SELECT.
+                else if (upperLexeme == "ORDER")
+                {
+                    tokens.push_back(
+                        { TokenType::OrderKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "BY")
+                {
+                    tokens.push_back(
+                        { TokenType::ByKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "ASC")
+                {
+                    tokens.push_back(
+                        { TokenType::AscKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "DESC")
+                {
+                    tokens.push_back(
+                        { TokenType::DescKeyword, lexeme }
+                    );
+                }
+
+                // LIKE se utiliza para buscar patrones dentro de columnas VARCHAR.
+                else if (upperLexeme == "LIKE")
+                {
+                    tokens.push_back(
+                        { TokenType::LikeKeyword, lexeme }
                     );
                 }
 
