@@ -8,6 +8,7 @@ namespace tinysql
     enum class TokenType
     {
         CreateKeyword,
+        DropKeyword,
         SetKeyword,
         InsertKeyword,
         DeleteKeyword,

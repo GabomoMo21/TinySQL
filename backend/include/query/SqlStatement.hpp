@@ -8,6 +8,8 @@
 #include "query/SelectStatement.hpp"
 #include "query/DeleteStatement.hpp"
 #include "query/UpdateStatement.hpp"
+#include "query/DropTableStatement.hpp"
+
 namespace tinysql
 {
     // Identifica las sentencias que puede procesar actualmente TinySQLDb.
@@ -19,6 +21,7 @@ namespace tinysql
         Insert,
         Select,
         Delete,
+        DropTable,
         Update
     };
 
@@ -39,6 +42,8 @@ namespace tinysql
         std::optional<DeleteStatement> deleteStatement =
             std::nullopt;
         std::optional<UpdateStatement> update =
+            std::nullopt;
+        std::optional<DropTableStatement> dropTable =
             std::nullopt;
     };
 

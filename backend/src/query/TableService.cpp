@@ -8,7 +8,11 @@
 #include "core/ColumnMetadata.hpp"
 #include "core/DataType.hpp"
 #include "core/ErrorCode.hpp"
+#include "query/DropTableStatement.hpp"
+#include <exception>
+#include <vector>
 
+#include "storage/StoredRecord.hpp"
 namespace tinysql
 {
     TableService::TableService(
@@ -73,6 +77,97 @@ namespace tinysql
         return QueryResult::success(
             "Tabla creada correctamente."
         );
+    }
+    QueryResult TableService::dropTable(
+        const std::string& databaseName,
+        const DropTableStatement& statement
+    )
+    {
+        if (databaseName.empty())
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "Debe seleccionar una base de datos antes de eliminar una tabla."
+            );
+        }
+
+        if (!systemCatalog_.databaseExists(databaseName))
+        {
+            return QueryResult::failure(
+                ErrorCode::DatabaseNotFound,
+                "La base de datos activa no existe."
+            );
+        }
+
+        if (
+            !systemCatalog_.tableExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::TableNotFound,
+                "La tabla indicada no existe."
+            );
+        }
+
+        if (
+            !tableFileManager_.tableFileExists(
+                databaseName,
+                statement.tableName
+            )
+            )
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "La tabla existe en el catalogo, pero su archivo fisico no existe."
+            );
+        }
+
+        try
+        {
+            const TableMetadata table =
+                systemCatalog_.getTable(
+                    databaseName,
+                    statement.tableName
+                );
+
+            const std::vector<StoredRecord> activeRecords =
+                tableFileManager_.readAllRecords(
+                    databaseName,
+                    table
+                );
+
+            if (!activeRecords.empty())
+            {
+                return QueryResult::failure(
+                    ErrorCode::TableNotEmpty,
+                    "DROP TABLE solo se permite cuando la tabla esta vacia."
+                );
+            }
+
+            tableFileManager_.deleteTableFile(
+                databaseName,
+                statement.tableName
+            );
+
+            systemCatalog_.dropTable(
+                databaseName,
+                statement.tableName
+            );
+
+            return QueryResult::success(
+                "Tabla eliminada correctamente."
+            );
+        }
+        catch (const std::exception&)
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "No se pudo eliminar la tabla."
+            );
+        }
     }
 
     QueryResult TableService::validateTableDefinition(

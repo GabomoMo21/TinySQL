@@ -1121,4 +1121,35 @@ T readNumberFromRecord(
             "Tipo de columna no soportado."
         );
     }
+    void TableFileManager::deleteTableFile(
+        const std::string& databaseName,
+        const std::string& tableName
+    ) const
+    {
+        const std::filesystem::path tableFilePath =
+            storagePaths_.getTableFilePath(
+                databaseName,
+                tableName
+            );
+
+        if (
+            !std::filesystem::exists(tableFilePath) ||
+            !std::filesystem::is_regular_file(tableFilePath)
+            )
+        {
+            throw std::runtime_error(
+                "El archivo fisico de la tabla no existe."
+            );
+        }
+
+        const bool removed =
+            std::filesystem::remove(tableFilePath);
+
+        if (!removed)
+        {
+            throw std::runtime_error(
+                "No se pudo eliminar el archivo fisico de la tabla."
+            );
+        }
+    }
 }

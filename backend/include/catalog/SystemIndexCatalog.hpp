@@ -37,6 +37,10 @@ namespace tinysql
         void addIndex(
             const SystemIndexEntry& index
         );
+        void removeIndexesByTable(
+            const std::string& databaseName,
+            const std::string& tableName
+        );
 
     private:
         std::filesystem::path filePath_;

@@ -6,6 +6,7 @@
 #include "core/QueryResult.hpp"
 #include "core/TableMetadata.hpp"
 #include "storage/TableFileManager.hpp"
+#include "query/DropTableStatement.hpp"
 
 namespace tinysql
 {
@@ -21,6 +22,10 @@ namespace tinysql
         QueryResult createTable(
             const std::string& databaseName,
             const TableMetadata& table
+        );
+        QueryResult dropTable(
+            const std::string& databaseName,
+            const DropTableStatement& statement
         );
 
     private:

@@ -154,4 +154,38 @@ namespace tinysql
     {
         return indexCatalog_.getIndexesByDatabase(databaseName);
     }
+    void SystemCatalog::dropTable(
+        const std::string& databaseName,
+        const std::string& tableName
+    )
+    {
+        if (!databaseCatalog_.databaseExists(databaseName))
+        {
+            throw std::runtime_error(
+                "La base de datos no existe en el catalogo."
+            );
+        }
+
+        if (!tableCatalog_.tableExists(databaseName, tableName))
+        {
+            throw std::runtime_error(
+                "La tabla no existe en el catalogo."
+            );
+        }
+
+        indexCatalog_.removeIndexesByTable(
+            databaseName,
+            tableName
+        );
+
+        columnCatalog_.removeColumnsByTable(
+            databaseName,
+            tableName
+        );
+
+        tableCatalog_.removeTable(
+            databaseName,
+            tableName
+        );
+    }
 }

@@ -15,6 +15,7 @@ namespace tinysql
         TypeMismatch,
         DuplicateValue,
         StorageError,
-        InternalError
+        InternalError,
+        TableNotEmpty
     };
 }

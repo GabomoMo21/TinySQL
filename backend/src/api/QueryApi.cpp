@@ -47,6 +47,9 @@ namespace
         case tinysql::ErrorCode::StorageError:
             return "STORAGE_ERROR";
 
+        case tinysql::ErrorCode::TableNotEmpty:
+            return "TABLE_NOT_EMPTY";
+
         case tinysql::ErrorCode::InternalError:
             return "INTERNAL_ERROR";
         }
@@ -77,6 +80,7 @@ namespace
 
         case tinysql::ErrorCode::DatabaseAlreadyExists:
         case tinysql::ErrorCode::DuplicateValue:
+        case tinysql::ErrorCode::TableNotEmpty:
             return 409;
 
         case tinysql::ErrorCode::TypeMismatch:

@@ -111,4 +111,39 @@ namespace tinysql
         writer.writeString(table.tableName);
         writer.writeUInt32(table.recordSize);
     }
+    void SystemTableCatalog::removeTable(
+        const std::string& databaseName,
+        const std::string& tableName
+    )
+    {
+        const std::vector<SystemTableEntry> tables =
+            getAllTables();
+
+        bool found = false;
+
+        BinaryWriter writer(filePath_, false);
+
+        for (const SystemTableEntry& table : tables)
+        {
+            if (
+                table.databaseName == databaseName &&
+                table.tableName == tableName
+                )
+            {
+                found = true;
+                continue;
+            }
+
+            writer.writeString(table.databaseName);
+            writer.writeString(table.tableName);
+            writer.writeUInt32(table.recordSize);
+        }
+
+        if (!found)
+        {
+            throw std::runtime_error(
+                "La tabla no existe en SystemTables."
+            );
+        }
+    }
 }

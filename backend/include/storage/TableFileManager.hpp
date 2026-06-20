@@ -68,6 +68,10 @@ namespace tinysql
             std::uint64_t offset,
             const std::vector<Value>& values
         ) const;
+        void deleteTableFile(
+            const std::string& databaseName,
+            const std::string& tableName
+        ) const;
 
     private:
         std::uint32_t calculateColumnSize(
