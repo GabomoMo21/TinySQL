@@ -14,7 +14,7 @@
 #include "core/DateTime.hpp"
 #include "storage/BinaryReader.hpp"
 #include "storage/BinaryWriter.hpp"
-
+#include <fstream>
 namespace tinysql
 {
     namespace
@@ -856,6 +856,235 @@ T readNumberFromRecord(
             rawOffset
             );
     }
+    void TableFileManager::markRecordDeleted(
+        const std::string& databaseName,
+        const TableMetadata& table,
+        std::uint64_t offset
+    ) const
+    {
+        const std::filesystem::path tableFilePath =
+            storagePaths_.getTableFilePath(
+                databaseName,
+                table.getName()
+            );
+
+        if (
+            !std::filesystem::exists(tableFilePath) ||
+            !std::filesystem::is_regular_file(tableFilePath)
+            )
+        {
+            throw std::runtime_error(
+                "El archivo fisico de la tabla no existe."
+            );
+        }
+
+        std::uint64_t recordsStart = 0;
+
+        const std::uint64_t recordSize =
+            calculateRecordSize(table);
+
+        {
+            BinaryReader reader(tableFilePath);
+
+            validateTableHeader(
+                reader,
+                table
+            );
+
+            recordsStart =
+                reader.getPosition();
+        }
+
+        const std::uintmax_t fileSize =
+            std::filesystem::file_size(
+                tableFilePath
+            );
+
+        if (offset < recordsStart)
+        {
+            throw std::runtime_error(
+                "El offset apunta dentro de la cabecera."
+            );
+        }
+
+        if ((offset - recordsStart) % recordSize != 0)
+        {
+            throw std::runtime_error(
+                "El offset no coincide con el inicio de un registro."
+            );
+        }
+
+        if (
+            offset > fileSize ||
+            recordSize > fileSize - offset
+            )
+        {
+            throw std::runtime_error(
+                "El offset apunta fuera de los registros existentes."
+            );
+        }
+
+        std::fstream file(
+            tableFilePath,
+            std::ios::binary |
+            std::ios::in |
+            std::ios::out
+        );
+
+        if (!file.is_open())
+        {
+            throw std::runtime_error(
+                "No se pudo abrir el archivo de tabla para actualizar el tombstone."
+            );
+        }
+
+        file.seekp(
+            static_cast<std::streamoff>(offset),
+            std::ios::beg
+        );
+
+        if (!file)
+        {
+            throw std::runtime_error(
+                "No se pudo posicionar el archivo en el registro indicado."
+            );
+        }
+
+        const std::uint8_t deletedFlag = 1;
+
+        file.write(
+            reinterpret_cast<const char*>(&deletedFlag),
+            sizeof(deletedFlag)
+        );
+
+        if (!file)
+        {
+            throw std::runtime_error(
+                "No se pudo marcar el registro como eliminado."
+            );
+        }
+    }
+   // Sobrescribe un registro activo en la misma posicion.
+// Mantiene el offset estable para futuros indices.
+    void TableFileManager::updateRecordAt(
+        const std::string& databaseName,
+        const TableMetadata& table,
+        std::uint64_t offset,
+        const std::vector<Value>& values
+    ) const
+    {
+        const std::filesystem::path tableFilePath =
+            storagePaths_.getTableFilePath(
+                databaseName,
+                table.getName()
+            );
+
+        if (
+            !std::filesystem::exists(tableFilePath) ||
+            !std::filesystem::is_regular_file(tableFilePath)
+            )
+        {
+            throw std::runtime_error(
+                "El archivo fisico de la tabla no existe."
+            );
+        }
+
+        std::uint64_t recordsStart = 0;
+        const std::uint64_t recordSize =
+            calculateRecordSize(table);
+
+        {
+            BinaryReader reader(tableFilePath);
+
+            validateTableHeader(
+                reader,
+                table
+            );
+
+            recordsStart =
+                reader.getPosition();
+        }
+
+        const std::uintmax_t fileSize =
+            std::filesystem::file_size(
+                tableFilePath
+            );
+
+        if (offset < recordsStart)
+        {
+            throw std::runtime_error(
+                "El offset apunta dentro de la cabecera."
+            );
+        }
+
+        if ((offset - recordsStart) % recordSize != 0)
+        {
+            throw std::runtime_error(
+                "El offset no coincide con el inicio de un registro."
+            );
+        }
+
+        if (
+            offset > fileSize ||
+            recordSize > fileSize - offset
+            )
+        {
+            throw std::runtime_error(
+                "El offset apunta fuera de los registros existentes."
+            );
+        }
+
+        const std::vector<std::uint8_t> serializedRecord =
+            serializeRecord(
+                table,
+                values
+            );
+
+        if (serializedRecord.size() != recordSize)
+        {
+            throw std::runtime_error(
+                "El registro serializado no coincide con el tamano esperado."
+            );
+        }
+
+        std::fstream file(
+            tableFilePath,
+            std::ios::binary |
+            std::ios::in |
+            std::ios::out
+        );
+
+        if (!file.is_open())
+        {
+            throw std::runtime_error(
+                "No se pudo abrir el archivo de tabla para actualizar el registro."
+            );
+        }
+
+        file.seekp(
+            static_cast<std::streamoff>(offset),
+            std::ios::beg
+        );
+
+        if (!file)
+        {
+            throw std::runtime_error(
+                "No se pudo posicionar el archivo en el registro indicado."
+            );
+        }
+
+        file.write(
+            reinterpret_cast<const char*>(serializedRecord.data()),
+            static_cast<std::streamsize>(serializedRecord.size())
+        );
+
+        if (!file)
+        {
+            throw std::runtime_error(
+                "No se pudo escribir el registro actualizado."
+            );
+        }
+    }
 
     std::uint32_t TableFileManager::calculateColumnSize(
         const ColumnMetadata& column
@@ -891,5 +1120,36 @@ T readNumberFromRecord(
         throw std::runtime_error(
             "Tipo de columna no soportado."
         );
+    }
+    void TableFileManager::deleteTableFile(
+        const std::string& databaseName,
+        const std::string& tableName
+    ) const
+    {
+        const std::filesystem::path tableFilePath =
+            storagePaths_.getTableFilePath(
+                databaseName,
+                tableName
+            );
+
+        if (
+            !std::filesystem::exists(tableFilePath) ||
+            !std::filesystem::is_regular_file(tableFilePath)
+            )
+        {
+            throw std::runtime_error(
+                "El archivo fisico de la tabla no existe."
+            );
+        }
+
+        const bool removed =
+            std::filesystem::remove(tableFilePath);
+
+        if (!removed)
+        {
+            throw std::runtime_error(
+                "No se pudo eliminar el archivo fisico de la tabla."
+            );
+        }
     }
 }

@@ -8,7 +8,6 @@
 
 namespace tinysql
 {
-    // Conserva una referencia a cada servicio utilizado por el procesador.
     QueryProcessor::QueryProcessor(
         DatabaseService& databaseService,
         TableService& tableService,
@@ -20,7 +19,6 @@ namespace tinysql
     {
     }
 
-    // Analiza la sentencia, ejecuta la operación y mide su duración.
     QueryResult QueryProcessor::execute(
         const QueryRequest& request
     ) const
@@ -41,7 +39,6 @@ namespace tinysql
                     request.getStatement()
                 );
 
-            // Delega cada sentencia al servicio encargado de ejecutarla.
             switch (statement.type)
             {
             case SqlStatementType::CreateDatabase:
@@ -49,7 +46,6 @@ namespace tinysql
                     databaseService_.createDatabase(
                         statement.databaseName
                     );
-
                 break;
 
             case SqlStatementType::SetDatabase:
@@ -57,7 +53,6 @@ namespace tinysql
                     databaseService_.setDatabase(
                         statement.databaseName
                     );
-
                 break;
 
             case SqlStatementType::CreateTable:
@@ -68,7 +63,6 @@ namespace tinysql
                             ErrorCode::InternalError,
                             "El parser no produjo los datos necesarios para CREATE TABLE."
                         );
-
                     break;
                 }
 
@@ -77,7 +71,6 @@ namespace tinysql
                         request.getDatabaseName(),
                         statement.table.value()
                     );
-
                 break;
 
             case SqlStatementType::Insert:
@@ -88,7 +81,6 @@ namespace tinysql
                             ErrorCode::InternalError,
                             "El parser no produjo los datos necesarios para INSERT."
                         );
-
                     break;
                 }
 
@@ -97,7 +89,6 @@ namespace tinysql
                         request.getDatabaseName(),
                         statement.insert.value()
                     );
-
                 break;
 
             case SqlStatementType::Select:
@@ -108,15 +99,68 @@ namespace tinysql
                             ErrorCode::InternalError,
                             "El parser no produjo los datos necesarios para SELECT."
                         );
-
                     break;
                 }
 
-                // El servicio decide si debe devolver todas las columnas o solo una proyección.
                 result =
                     recordService_.select(
                         request.getDatabaseName(),
                         statement.select.value()
+                    );
+                break;
+
+            case SqlStatementType::Delete:
+                if (!statement.deleteStatement.has_value())
+                {
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para DELETE."
+                        );
+                    break;
+                }
+
+                result =
+                    recordService_.deleteRecords(
+                        request.getDatabaseName(),
+                        statement.deleteStatement.value()
+                    );
+                break;
+            case SqlStatementType::Update:
+                if (!statement.update.has_value())
+                {
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para UPDATE."
+                        );
+
+                    break;
+                }
+
+                result =
+                    recordService_.updateRecords(
+                        request.getDatabaseName(),
+                        statement.update.value()
+                    );
+
+                break;
+            case SqlStatementType::DropTable:
+                if (!statement.dropTable.has_value())
+                {
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para DROP TABLE."
+                        );
+
+                    break;
+                }
+
+                result =
+                    tableService_.dropTable(
+                        request.getDatabaseName(),
+                        statement.dropTable.value()
                     );
 
                 break;
@@ -124,7 +168,6 @@ namespace tinysql
         }
         catch (const std::exception& error)
         {
-            // Los errores producidos durante el análisis se consideran sintácticos.
             result =
                 QueryResult::failure(
                     ErrorCode::InvalidSyntax,

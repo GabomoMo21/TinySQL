@@ -6,6 +6,9 @@
 #include "core/TableMetadata.hpp"
 #include "query/InsertStatement.hpp"
 #include "query/SelectStatement.hpp"
+#include "query/DeleteStatement.hpp"
+#include "query/UpdateStatement.hpp"
+#include "query/DropTableStatement.hpp"
 
 namespace tinysql
 {
@@ -16,7 +19,10 @@ namespace tinysql
         SetDatabase,
         CreateTable,
         Insert,
-        Select
+        Select,
+        Delete,
+        DropTable,
+        Update
     };
 
     // Reúne la información producida por el parser para cada sentencia.
@@ -33,5 +39,12 @@ namespace tinysql
 
         std::optional<SelectStatement> select =
             std::nullopt;
+        std::optional<DeleteStatement> deleteStatement =
+            std::nullopt;
+        std::optional<UpdateStatement> update =
+            std::nullopt;
+        std::optional<DropTableStatement> dropTable =
+            std::nullopt;
     };
+
 }

@@ -311,6 +311,18 @@ namespace tinysql
                         { TokenType::InsertKeyword, lexeme }
                     );
                 }
+                else if (upperLexeme == "DROP")
+                {
+                    tokens.push_back(
+                        { TokenType::DropKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "DELETE")
+                {
+                    tokens.push_back(
+                        { TokenType::DeleteKeyword, lexeme }
+                    );
+                }
                 else if (upperLexeme == "INTO")
                 {
                     tokens.push_back(
@@ -322,6 +334,12 @@ namespace tinysql
                 {
                     tokens.push_back(
                         { TokenType::SelectKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "UPDATE")
+                {
+                    tokens.push_back(
+                        { TokenType::UpdateKeyword, lexeme }
                     );
                 }
                 else if (upperLexeme == "FROM")

@@ -163,4 +163,31 @@ namespace tinysql
         writer.writeString(index.index.getColumnName());
         writer.writeUInt32(indexTypeToUInt32(index.index.getType()));
     }
+    void SystemIndexCatalog::removeIndexesByTable(
+        const std::string& databaseName,
+        const std::string& tableName
+    )
+    {
+        const std::vector<SystemIndexEntry> indexes =
+            getAllIndexes();
+
+        BinaryWriter writer(filePath_, false);
+
+        for (const SystemIndexEntry& index : indexes)
+        {
+            if (
+                index.databaseName == databaseName &&
+                index.index.getTableName() == tableName
+                )
+            {
+                continue;
+            }
+
+            writer.writeString(index.databaseName);
+            writer.writeString(index.index.getName());
+            writer.writeString(index.index.getTableName());
+            writer.writeString(index.index.getColumnName());
+            writer.writeUInt32(indexTypeToUInt32(index.index.getType()));
+        }
+    }
 }

@@ -62,6 +62,10 @@ namespace tinysql
         std::vector<SystemIndexEntry> getIndexesByDatabase(
             const std::string& databaseName
         ) const;
+        void dropTable(
+            const std::string& databaseName,
+            const std::string& tableName
+        );
 
     private:
         SystemDatabaseCatalog& databaseCatalog_;

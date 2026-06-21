@@ -37,6 +37,10 @@ namespace tinysql
         void addTable(
             const SystemTableEntry& table
         );
+        void removeTable(
+            const std::string& databaseName,
+            const std::string& tableName
+        );
 
     private:
         std::filesystem::path filePath_;

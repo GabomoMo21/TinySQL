@@ -56,6 +56,22 @@ namespace tinysql
             const TableMetadata& table,
             std::uint64_t offset
         ) const;
+        // Marca un registro como eliminado sin mover los demás registros.
+        void markRecordDeleted(
+            const std::string& databaseName,
+            const TableMetadata& table,
+            std::uint64_t offset
+        ) const;
+        void updateRecordAt(
+            const std::string& databaseName,
+            const TableMetadata& table,
+            std::uint64_t offset,
+            const std::vector<Value>& values
+        ) const;
+        void deleteTableFile(
+            const std::string& databaseName,
+            const std::string& tableName
+        ) const;
 
     private:
         std::uint32_t calculateColumnSize(

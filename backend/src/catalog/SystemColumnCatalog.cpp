@@ -182,4 +182,38 @@ namespace tinysql
             addColumn(entry);
         }
     }
+    void SystemColumnCatalog::removeColumnsByTable(
+        const std::string& databaseName,
+        const std::string& tableName
+    )
+    {
+        const std::vector<SystemColumnEntry> columns =
+            getAllColumns();
+
+        BinaryWriter writer(filePath_, false);
+
+        for (const SystemColumnEntry& column : columns)
+        {
+            if (
+                column.databaseName == databaseName &&
+                column.tableName == tableName
+                )
+            {
+                continue;
+            }
+
+            writer.writeString(column.databaseName);
+            writer.writeString(column.tableName);
+            writer.writeUInt32(column.columnOrder);
+            writer.writeString(column.column.getName());
+            writer.writeUInt32(dataTypeToUInt32(column.column.getType()));
+            writer.writeUInt32(
+                static_cast<std::uint32_t>(
+                    column.column.getVarcharLength()
+                    )
+            );
+            writer.writeBool(column.column.isNullable());
+            writer.writeBool(column.column.isUnique());
+        }
+    }
 }

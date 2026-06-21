@@ -18,6 +18,9 @@
 #include "query/SqlToken.hpp"
 #include "query/WhereCondition.hpp"
 #include "query/OrderByClause.hpp"
+#include "query/DeleteStatement.hpp"
+#include "query/UpdateStatement.hpp"
+#include "query/DropTableStatement.hpp"
 
 namespace tinysql
 {
@@ -54,6 +57,10 @@ namespace tinysql
                         "Despues de CREATE se esperaba DATABASE o TABLE."
                     );
                 }
+                if (match(TokenType::DropKeyword))
+                {
+                    return parseDropTable();
+                }
 
                 if (match(TokenType::SetKeyword))
                 {
@@ -69,9 +76,17 @@ namespace tinysql
                 {
                     return parseSelect();
                 }
+                if (match(TokenType::DeleteKeyword))
+                {
+                    return parseDelete();
+                }
+                if (match(TokenType::UpdateKeyword))
+                {
+                    return parseUpdate();
+                }
 
                 throw std::runtime_error(
-                    "La sentencia debe comenzar con CREATE, SET, INSERT o SELECT."
+                    "La sentencia debe comenzar con CREATE, DROP, SET, INSERT, SELECT, DELETE o UPDATE."
                 );
             }
 
@@ -102,6 +117,40 @@ namespace tinysql
 
                 parsedStatement.select =
                     std::nullopt;
+
+                return parsedStatement;
+            }
+
+            // Interpreta DROP TABLE tabla.
+            SqlStatement parseDropTable()
+            {
+                consume(
+                    TokenType::TableKeyword,
+                    "Despues de DROP se esperaba TABLE."
+                );
+
+                DropTableStatement dropTableStatement;
+
+                dropTableStatement.tableName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la tabla despues de DROP TABLE."
+                    );
+
+                consumeOptionalSemicolonAndEnd();
+
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::DropTable;
+
+                parsedStatement.databaseName = "";
+                parsedStatement.table = std::nullopt;
+                parsedStatement.insert = std::nullopt;
+                parsedStatement.select = std::nullopt;
+                parsedStatement.deleteStatement = std::nullopt;
+                parsedStatement.update = std::nullopt;
+                parsedStatement.dropTable =
+                    std::move(dropTableStatement);
 
                 return parsedStatement;
             }
@@ -274,6 +323,64 @@ namespace tinysql
 
                 return parsedStatement;
             }
+            // Interpreta UPDATE tabla SET columna = valor [WHERE condicion].
+            SqlStatement parseUpdate()
+            {
+                UpdateStatement updateStatement;
+
+                updateStatement.tableName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la tabla despues de UPDATE."
+                    );
+
+                consume(
+                    TokenType::SetKeyword,
+                    "Despues del nombre de la tabla se esperaba SET."
+                );
+
+                updateStatement.columnName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la columna a actualizar."
+                    );
+
+                if (
+                    match(TokenType::Equal))
+                {
+                    // Operador aceptado.
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "Despues de la columna se esperaba '='."
+                    );
+                }
+
+                updateStatement.newValue =
+                    parseLiteral();
+
+                if (match(TokenType::WhereKeyword))
+                {
+                    updateStatement.whereCondition =
+                        parseWhereCondition();
+                }
+
+                consumeOptionalSemicolonAndEnd();
+
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::Update;
+
+                parsedStatement.databaseName = "";
+                parsedStatement.table = std::nullopt;
+                parsedStatement.insert = std::nullopt;
+                parsedStatement.select = std::nullopt;
+                parsedStatement.deleteStatement = std::nullopt;
+                parsedStatement.update =
+                    std::move(updateStatement);
+
+                return parsedStatement;
+            }
 
             // Interpreta SELECT con proyección, WHERE y ORDER BY opcionales.
             SqlStatement parseSelect()
@@ -341,6 +448,44 @@ namespace tinysql
 
                 parsedStatement.select =
                     std::move(selectStatement);
+
+                return parsedStatement;
+            }
+            // Interpreta DELETE FROM tabla [WHERE condicion].
+            SqlStatement parseDelete()
+            {
+                consume(
+                    TokenType::FromKeyword,
+                    "Despues de DELETE se esperaba FROM."
+                );
+
+                DeleteStatement deleteStatement;
+
+                deleteStatement.tableName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la tabla."
+                    );
+
+                if (match(TokenType::WhereKeyword))
+                {
+                    deleteStatement.whereCondition =
+                        parseWhereCondition();
+                }
+
+                consumeOptionalSemicolonAndEnd();
+
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::Delete;
+
+                parsedStatement.databaseName = "";
+                parsedStatement.table = std::nullopt;
+                parsedStatement.insert = std::nullopt;
+                parsedStatement.select = std::nullopt;
+
+                parsedStatement.deleteStatement =
+                    std::move(deleteStatement);
 
                 return parsedStatement;
             }

@@ -42,6 +42,10 @@ namespace tinysql
             const std::string& tableName,
             const std::vector<ColumnMetadata>& columns
         );
+        void removeColumnsByTable(
+            const std::string& databaseName,
+            const std::string& tableName
+        );
 
     private:
         std::filesystem::path filePath_;
