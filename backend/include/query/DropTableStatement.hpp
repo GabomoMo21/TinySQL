@@ -8,4 +8,4 @@ namespace tinysql
     {
         std::string tableName;
     };
-}
+}   
