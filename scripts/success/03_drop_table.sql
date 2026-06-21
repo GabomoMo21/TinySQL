@@ -1,0 +1,15 @@
+CREATE DATABASE DropSuccess;
+SET DATABASE DropSuccess;
+
+CREATE TABLE Curso AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Curso VALUES(1, "Bases");
+
+DELETE FROM Curso;
+
+DROP TABLE Curso;
+
+SELECT * FROM SystemTables;

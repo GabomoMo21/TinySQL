@@ -1,0 +1,11 @@
+  CREATE DATABASE DropError;
+SET DATABASE DropError;
+
+CREATE TABLE Curso AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Curso VALUES(1, "Bases");
+
+DROP TABLE Curso;
