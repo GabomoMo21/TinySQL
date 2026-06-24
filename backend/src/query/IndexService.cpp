@@ -197,11 +197,20 @@ namespace tinysql
 
             std::size_t indexedEntries = 0;
 
-            // En G3 solo conectamos la estructura BST en memoria.
             if (statement.type == IndexType::BST)
             {
                 indexedEntries =
                     buildBstIndex(
+                        databaseName,
+                        indexMetadata,
+                        table,
+                        columnIndex
+                    );
+            }
+            else if (statement.type == IndexType::BTree)
+            {
+                indexedEntries =
+                    buildBTreeIndex(
                         databaseName,
                         indexMetadata,
                         table,
@@ -223,8 +232,17 @@ namespace tinysql
                 );
             }
 
+            if (statement.type == IndexType::BTree)
+            {
+                return QueryResult::success(
+                    "Indice creado correctamente. Entradas BTREE cargadas en memoria: " +
+                    std::to_string(indexedEntries) +
+                    "."
+                );
+            }
+
             return QueryResult::success(
-                "Indice creado correctamente. La estructura BTREE se conectara en una fase posterior."
+                "Indice creado correctamente."
             );
         }
         catch (const std::exception&)
@@ -240,6 +258,7 @@ namespace tinysql
         try
         {
             bstIndexes_.clear();
+            btreeIndexes_.clear();
 
             std::size_t rebuiltIndexes = 0;
             std::size_t rebuiltEntries = 0;
@@ -261,13 +280,6 @@ namespace tinysql
                 {
                     const IndexMetadata& indexMetadata =
                         entry.index;
-
-                    // Por ahora solo reconstruimos BST.
-                    // BTREE se implementa en el siguiente bloque grande.
-                    if (indexMetadata.getType() != IndexType::BST)
-                    {
-                        continue;
-                    }
 
                     if (
                         !systemCatalog_.tableExists(
@@ -329,21 +341,36 @@ namespace tinysql
                         );
                     }
 
-                    rebuiltEntries +=
-                        buildBstIndex(
-                            databaseName,
-                            indexMetadata,
-                            table,
-                            columnIndex
-                        );
+                    if (indexMetadata.getType() == IndexType::BST)
+                    {
+                        rebuiltEntries +=
+                            buildBstIndex(
+                                databaseName,
+                                indexMetadata,
+                                table,
+                                columnIndex
+                            );
 
-                    ++rebuiltIndexes;
+                        ++rebuiltIndexes;
+                    }
+                    else if (indexMetadata.getType() == IndexType::BTree)
+                    {
+                        rebuiltEntries +=
+                            buildBTreeIndex(
+                                databaseName,
+                                indexMetadata,
+                                table,
+                                columnIndex
+                            );
+
+                        ++rebuiltIndexes;
+                    }
                 }
             }
 
             QueryResult result =
                 QueryResult::success(
-                    "Indices BST reconstruidos correctamente. Indices: " +
+                    "Indices reconstruidos correctamente. Indices: " +
                     std::to_string(rebuiltIndexes) +
                     ". Entradas: " +
                     std::to_string(rebuiltEntries) +
@@ -387,10 +414,7 @@ namespace tinysql
                 const IndexMetadata& indexMetadata =
                     entry.index;
 
-                if (
-                    indexMetadata.getTableName() != table.getName() ||
-                    indexMetadata.getType() != IndexType::BST
-                    )
+                if (indexMetadata.getTableName() != table.getName())
                 {
                     continue;
                 }
@@ -422,20 +446,35 @@ namespace tinysql
                     );
                 }
 
-                rebuiltEntries +=
-                    buildBstIndex(
-                        databaseName,
-                        indexMetadata,
-                        table,
-                        columnIndex
-                    );
+                if (indexMetadata.getType() == IndexType::BST)
+                {
+                    rebuiltEntries +=
+                        buildBstIndex(
+                            databaseName,
+                            indexMetadata,
+                            table,
+                            columnIndex
+                        );
 
-                ++rebuiltIndexes;
+                    ++rebuiltIndexes;
+                }
+                else if (indexMetadata.getType() == IndexType::BTree)
+                {
+                    rebuiltEntries +=
+                        buildBTreeIndex(
+                            databaseName,
+                            indexMetadata,
+                            table,
+                            columnIndex
+                        );
+
+                    ++rebuiltIndexes;
+                }
             }
 
             QueryResult result =
                 QueryResult::success(
-                    "Indices BST de la tabla reconstruidos correctamente. Indices: " +
+                    "Indices de la tabla reconstruidos correctamente. Indices: " +
                     std::to_string(rebuiltIndexes) +
                     ". Entradas: " +
                     std::to_string(rebuiltEntries) +
@@ -594,6 +633,67 @@ namespace tinysql
 
         return indexedEntries;
     }
+    std::size_t IndexService::buildBTreeIndex(
+        const std::string& databaseName,
+        const IndexMetadata& indexMetadata,
+        const TableMetadata& table,
+        std::size_t columnIndex
+    ) const
+    {
+        const std::vector<ColumnMetadata>& columns =
+            table.getColumns();
+
+        const std::vector<StoredRecord> records =
+            tableFileManager_.readAllRecords(
+                databaseName,
+                table
+            );
+
+        const std::string memoryKey =
+            makeIndexKey(
+                databaseName,
+                indexMetadata.getName()
+            );
+
+        BTreeIndex rebuiltIndex;
+
+        for (const StoredRecord& record : records)
+        {
+            if (columnIndex >= record.values.size())
+            {
+                throw std::runtime_error(
+                    "El registro no coincide con la metadata de la tabla."
+                );
+            }
+
+            const IndexKey key =
+                IndexKey::fromValue(
+                    record.values[columnIndex],
+                    columns[columnIndex].getType()
+                );
+
+            const bool inserted =
+                rebuiltIndex.insert(
+                    key,
+                    record.offset
+                );
+
+            if (!inserted)
+            {
+                throw std::runtime_error(
+                    "No se pudo insertar una clave repetida en el indice BTREE."
+                );
+            }
+        }
+
+        const std::size_t indexedEntries =
+            rebuiltIndex.size();
+
+        btreeIndexes_[memoryKey] =
+            std::move(rebuiltIndex);
+
+        return indexedEntries;
+    }
 
     bool IndexService::tryFindOffsets(
         const std::string& databaseName,
@@ -616,10 +716,16 @@ namespace tinysql
             return false;
         }
 
+        const IndexKey searchKey =
+            IndexKey::fromValue(
+                comparisonValue,
+                dataType
+            );
+
         std::string memoryKey;
 
         if (
-            !findLoadedBstIndexKey(
+            findLoadedBstIndexKey(
                 databaseName,
                 tableName,
                 columnName,
@@ -627,54 +733,97 @@ namespace tinysql
             )
             )
         {
-            return false;
+            const auto indexIterator =
+                bstIndexes_.find(
+                    memoryKey
+                );
+
+            if (indexIterator == bstIndexes_.end())
+            {
+                return false;
+            }
+
+            switch (comparison)
+            {
+            case ComparisonOperator::Equal:
+                offsets =
+                    indexIterator->second.findEqual(
+                        searchKey
+                    );
+
+                return true;
+
+            case ComparisonOperator::GreaterThan:
+                offsets =
+                    indexIterator->second.findGreaterThan(
+                        searchKey
+                    );
+
+                return true;
+
+            case ComparisonOperator::LessThan:
+                offsets =
+                    indexIterator->second.findLessThan(
+                        searchKey
+                    );
+
+                return true;
+
+            case ComparisonOperator::NotEqual:
+            case ComparisonOperator::Like:
+                return false;
+            }
         }
 
-        const auto indexIterator =
-            bstIndexes_.find(
+        if (
+            findLoadedBTreeIndexKey(
+                databaseName,
+                tableName,
+                columnName,
                 memoryKey
-            );
-
-        if (indexIterator == bstIndexes_.end())
+            )
+            )
         {
-            return false;
-        }
-
-        const IndexKey searchKey =
-            IndexKey::fromValue(
-                comparisonValue,
-                dataType
-            );
-
-        switch (comparison)
-        {
-        case ComparisonOperator::Equal:
-            offsets =
-                indexIterator->second.findEqual(
-                    searchKey
+            const auto indexIterator =
+                btreeIndexes_.find(
+                    memoryKey
                 );
 
-            return true;
+            if (indexIterator == btreeIndexes_.end())
+            {
+                return false;
+            }
 
-        case ComparisonOperator::GreaterThan:
-            offsets =
-                indexIterator->second.findGreaterThan(
-                    searchKey
-                );
+            switch (comparison)
+            {
+            case ComparisonOperator::Equal:
+                offsets =
+                    indexIterator->second.findEqual(
+                        searchKey
+                    );
 
-            return true;
+                return true;
 
-        case ComparisonOperator::LessThan:
-            offsets =
-                indexIterator->second.findLessThan(
-                    searchKey
-                );
+            case ComparisonOperator::GreaterThan:
+                offsets =
+                    indexIterator->second.findGreaterThan(
+                        searchKey
+                    );
 
-            return true;
+                return true;
 
-        case ComparisonOperator::NotEqual:
-        case ComparisonOperator::Like:
-            return false;
+            case ComparisonOperator::LessThan:
+                offsets =
+                    indexIterator->second.findLessThan(
+                        searchKey
+                    );
+
+                return true;
+
+            case ComparisonOperator::NotEqual:
+            case ComparisonOperator::Like:
+                return false;
+            }
         }
 
         return false;
@@ -712,6 +861,50 @@ namespace tinysql
                 if (
                     bstIndexes_.find(candidateKey) !=
                     bstIndexes_.end()
+                    )
+                {
+                    memoryKey =
+                        candidateKey;
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+    bool IndexService::findLoadedBTreeIndexKey(
+        const std::string& databaseName,
+        const std::string& tableName,
+        const std::string& columnName,
+        std::string& memoryKey
+    ) const
+    {
+        const std::vector<SystemIndexEntry> indexes =
+            systemCatalog_.getIndexesByDatabase(
+                databaseName
+            );
+
+        for (const SystemIndexEntry& entry : indexes)
+        {
+            const IndexMetadata& index =
+                entry.index;
+
+            if (
+                index.getTableName() == tableName &&
+                index.getColumnName() == columnName &&
+                index.getType() == IndexType::BTree
+                )
+            {
+                const std::string candidateKey =
+                    makeIndexKey(
+                        databaseName,
+                        index.getName()
+                    );
+
+                if (
+                    btreeIndexes_.find(candidateKey) !=
+                    btreeIndexes_.end()
                     )
                 {
                     memoryKey =
@@ -825,6 +1018,40 @@ namespace tinysql
                 continue;
             }
         }
+        // Si el índice BTREE está cargado, se consulta directamente.
+        if (index.getType() == IndexType::BTree)
+        {
+            const std::string memoryKey =
+                makeIndexKey(
+                    databaseName,
+                    index.getName()
+                );
+
+            const auto btreeIterator =
+                btreeIndexes_.find(
+                    memoryKey
+                );
+
+            if (btreeIterator != btreeIndexes_.end())
+            {
+                const std::vector<std::uint64_t> repeatedOffsets =
+                    btreeIterator->second.findEqual(
+                        newKey
+                    );
+
+                if (!repeatedOffsets.empty())
+                {
+                    return QueryResult::failure(
+                        ErrorCode::DuplicateValue,
+                        "El valor de la columna " +
+                        index.getColumnName() +
+                        " ya existe en un indice BTREE."
+                    );
+                }
+
+                continue;
+            }
+        }
 
         // Si no hay estructura cargada, se revisa el archivo completo.
         const std::vector<StoredRecord> records =
@@ -886,10 +1113,7 @@ namespace tinysql
             const IndexMetadata& index =
                 entry.index;
 
-            if (
-                index.getTableName() != table.getName() ||
-                index.getType() != IndexType::BST
-                )
+            if (index.getTableName() != table.getName())
             {
                 continue;
             }
@@ -905,8 +1129,15 @@ namespace tinysql
                     memoryKey
                 );
 
-            // Solo se actualizan índices BST que ya estén cargados en memoria.
-            if (bstIterator == bstIndexes_.end())
+            auto btreeIterator =
+                btreeIndexes_.find(
+                    memoryKey
+                );
+
+            if (
+                bstIterator == bstIndexes_.end() &&
+                btreeIterator == btreeIndexes_.end()
+                )
             {
                 continue;
             }
@@ -955,20 +1186,40 @@ namespace tinysql
                     columns[columnIndex].getType()
                 );
 
-            const bool inserted =
-                bstIterator->second.insert(
-                    key,
-                    recordOffset
-                );
-
-            if (!inserted)
+            if (bstIterator != bstIndexes_.end())
             {
-                throw std::runtime_error(
-                    "No se pudo insertar una clave repetida en el indice BST."
-                );
+                const bool inserted =
+                    bstIterator->second.insert(
+                        key,
+                        recordOffset
+                    );
+
+                if (!inserted)
+                {
+                    throw std::runtime_error(
+                        "No se pudo insertar una clave repetida en el indice BST."
+                    );
+                }
+            }
+
+            if (btreeIterator != btreeIndexes_.end())
+            {
+                const bool inserted =
+                    btreeIterator->second.insert(
+                        key,
+                        recordOffset
+                    );
+
+                if (!inserted)
+                {
+                    throw std::runtime_error(
+                        "No se pudo insertar una clave repetida en el indice BTREE."
+                    );
+                }
             }
         }
     }
+
 
     std::string IndexService::makeIndexKey(
         const std::string& databaseName,

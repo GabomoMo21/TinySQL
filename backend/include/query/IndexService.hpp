@@ -16,6 +16,7 @@
 #include "query/CreateIndexStatement.hpp"
 #include "query/WhereCondition.hpp"
 #include "storage/TableFileManager.hpp"
+#include "query/BTreeIndex.hpp"
 
 namespace tinysql
 {
@@ -72,7 +73,7 @@ namespace tinysql
 
         // Los índices se guardan por base de datos y nombre de índice.
         mutable std::unordered_map<std::string, BstIndex> bstIndexes_;
-
+        mutable std::unordered_map<std::string, BTreeIndex> btreeIndexes_;
         bool isValidIdentifier(
             const std::string& identifier
         ) const;
@@ -101,5 +102,19 @@ namespace tinysql
             const std::string& databaseName,
             const std::string& indexName
         ) const;
+        std::size_t buildBTreeIndex(
+            const std::string& databaseName,
+            const IndexMetadata& indexMetadata,
+            const TableMetadata& table,
+            std::size_t columnIndex
+        ) const;
+
+        bool findLoadedBTreeIndexKey(
+            const std::string& databaseName,
+            const std::string& tableName,
+            const std::string& columnName,
+            std::string& memoryKey
+        ) const;
     };
+    
 }

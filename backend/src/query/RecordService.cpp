@@ -591,7 +591,7 @@ namespace tinysql
 
             const std::string selectMessage =
                 usedIndex
-                ? "Consulta ejecutada correctamente usando indice BST. Filas encontradas: "
+                ? "Consulta ejecutada correctamente usando indice. Filas encontradas: "
                 : "Consulta ejecutada correctamente. Filas encontradas: ";
 
             QueryResult result =
