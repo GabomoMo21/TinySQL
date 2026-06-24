@@ -98,6 +98,7 @@ target_link_libraries(TinySQLCatalog
 # Esta biblioteca coordina la ejecución de operaciones solicitadas por SQL.
 add_library(TinySQLQuery
     src/query/BstIndex.cpp
+    src/query/BTreeIndex.cpp
     src/query/ConditionEvaluator.cpp
     src/query/DatabaseParser.cpp
     src/query/DatabaseService.cpp
