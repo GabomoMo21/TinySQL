@@ -59,6 +59,7 @@ add_library(TinySQLStorage
     src/storage/BinaryWriter.cpp
     src/storage/StoragePaths.cpp
     src/storage/TableFileManager.cpp
+    src/storage/RecordCipher.cpp
 )
 
 # Permite incluir archivos utilizando rutas como storage/StoragePaths.hpp.
