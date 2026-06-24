@@ -1,0 +1,14 @@
+CREATE DATABASE OneIndexPerTableError;
+SET DATABASE OneIndexPerTableError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+
+CREATE INDEX IDX_ID ON Estudiante(ID) OF TYPE BST;
+
+CREATE INDEX IDX_NOMBRE ON Estudiante(Nombre) OF TYPE BTREE;
