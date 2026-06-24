@@ -21,7 +21,8 @@
 #include "core/IndexMetadata.hpp"
 #include "core/IndexType.hpp"
 #include "query/IndexService.hpp"
-
+#include <unordered_set>
+#include "query/IndexKey.hpp"
 
 namespace tinysql
 {
@@ -824,6 +825,19 @@ namespace tinysql
 
                 ++affectedRows;
             }
+            if (affectedRows > 0)
+            {
+                const QueryResult rebuildIndexesResult =
+                    indexService_.rebuildIndexesForTable(
+                        databaseName,
+                        table
+                    );
+
+                if (!rebuildIndexesResult.isSuccess())
+                {
+                    return rebuildIndexesResult;
+                }
+            }
 
             QueryResult result =
                 QueryResult::success(
@@ -1047,10 +1061,22 @@ namespace tinysql
                     table
                 );
 
+            std::vector<bool> shouldUpdateByPosition(
+                records.size(),
+                false
+            );
+
             std::size_t affectedRows = 0;
 
-            for (const StoredRecord& record : records)
+            for (
+                std::size_t recordIndex = 0;
+                recordIndex < records.size();
+                ++recordIndex
+                )
             {
+                const StoredRecord& record =
+                    records[recordIndex];
+
                 bool shouldUpdate = true;
 
                 if (hasWhereCondition)
@@ -1079,6 +1105,103 @@ namespace tinysql
                     continue;
                 }
 
+                shouldUpdateByPosition[recordIndex] =
+                    true;
+
+                ++affectedRows;
+            }
+
+            if (affectedRows > 0)
+            {
+                const std::vector<SystemIndexEntry> indexes =
+                    systemCatalog_.getIndexesByDatabase(
+                        databaseName
+                    );
+
+                bool targetColumnIsIndexed = false;
+
+                for (const SystemIndexEntry& entry : indexes)
+                {
+                    const IndexMetadata& indexMetadata =
+                        entry.index;
+
+                    if (
+                        indexMetadata.getTableName() == table.getName() &&
+                        indexMetadata.getColumnName() ==
+                        tableColumns[targetColumnIndex].getName()
+                        )
+                    {
+                        targetColumnIsIndexed = true;
+                        break;
+                    }
+                }
+
+                if (targetColumnIsIndexed)
+                {
+                    std::unordered_set<std::string> seenKeys;
+
+                    for (
+                        std::size_t recordIndex = 0;
+                        recordIndex < records.size();
+                        ++recordIndex
+                        )
+                    {
+                        const StoredRecord& record =
+                            records[recordIndex];
+
+                        if (
+                            targetColumnIndex >=
+                            record.values.size()
+                            )
+                        {
+                            throw std::runtime_error(
+                                "El registro no coincide con la metadata de la tabla."
+                            );
+                        }
+
+                        const Value& candidateValue =
+                            shouldUpdateByPosition[recordIndex]
+                            ? convertedNewValue
+                            : record.values[targetColumnIndex];
+
+                        const IndexKey candidateKey =
+                            IndexKey::fromValue(
+                                candidateValue,
+                                tableColumns[targetColumnIndex].getType()
+                            );
+
+                        const std::string keyText =
+                            candidateKey.toString();
+
+                        if (seenKeys.count(keyText) > 0)
+                        {
+                            return QueryResult::failure(
+                                ErrorCode::DuplicateValue,
+                                "La actualizacion produciria valores duplicados en una columna indexada."
+                            );
+                        }
+
+                        seenKeys.insert(
+                            keyText
+                        );
+                    }
+                }
+            }
+
+            for (
+                std::size_t recordIndex = 0;
+                recordIndex < records.size();
+                ++recordIndex
+                )
+            {
+                if (!shouldUpdateByPosition[recordIndex])
+                {
+                    continue;
+                }
+
+                const StoredRecord& record =
+                    records[recordIndex];
+
                 std::vector<Value> updatedValues =
                     record.values;
 
@@ -1091,8 +1214,20 @@ namespace tinysql
                     record.offset,
                     updatedValues
                 );
+            }
 
-                ++affectedRows;
+            if (affectedRows > 0)
+            {
+                const QueryResult rebuildIndexesResult =
+                    indexService_.rebuildIndexesForTable(
+                        databaseName,
+                        table
+                    );
+
+                if (!rebuildIndexesResult.isSuccess())
+                {
+                    return rebuildIndexesResult;
+                }
             }
 
             QueryResult result =

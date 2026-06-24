@@ -27,12 +27,17 @@ namespace tinysql
             SystemCatalog& systemCatalog,
             const TableFileManager& tableFileManager
         );
-
+        
         QueryResult createIndex(
             const std::string& databaseName,
             const CreateIndexStatement& statement
         ) const;
         QueryResult rebuildLoadedIndexes() const;
+
+        QueryResult rebuildIndexesForTable(
+            const std::string& databaseName,
+            const TableMetadata& table
+        ) const;
 
         // Intenta buscar offsets usando un índice BST cargado en memoria.
         // Retorna true si encontró un índice usable, aunque la búsqueda no devuelva filas.
