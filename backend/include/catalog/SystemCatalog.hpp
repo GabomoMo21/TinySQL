@@ -62,6 +62,17 @@ namespace tinysql
         std::vector<SystemIndexEntry> getIndexesByDatabase(
             const std::string& databaseName
         ) const;
+
+        bool indexExists(
+            const std::string& databaseName,
+            const std::string& indexName
+        ) const;
+
+        void addIndex(
+            const std::string& databaseName,
+            const IndexMetadata& index
+        );
+
         void dropTable(
             const std::string& databaseName,
             const std::string& tableName

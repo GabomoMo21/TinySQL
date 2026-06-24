@@ -1,6 +1,7 @@
 #include "catalog/SystemCatalog.hpp"
 
 #include <stdexcept>
+#include <vector>
 
 namespace tinysql
 {
@@ -35,7 +36,9 @@ namespace tinysql
         const std::string& databaseName
     ) const
     {
-        return databaseCatalog_.databaseExists(databaseName);
+        return databaseCatalog_.databaseExists(
+            databaseName
+        );
     }
 
     bool SystemCatalog::tableExists(
@@ -63,7 +66,12 @@ namespace tinysql
             );
         }
 
-        if (tableCatalog_.tableExists(databaseName, table.getName()))
+        if (
+            tableCatalog_.tableExists(
+                databaseName,
+                table.getName()
+            )
+            )
         {
             throw std::runtime_error(
                 "La tabla ya existe en el catalogo."
@@ -76,7 +84,9 @@ namespace tinysql
             recordSize
         };
 
-        tableCatalog_.addTable(tableEntry);
+        tableCatalog_.addTable(
+            tableEntry
+        );
 
         try
         {
@@ -88,9 +98,6 @@ namespace tinysql
         }
         catch (...)
         {
-            // Limitación temporal: todavía no hay eliminación física de registros
-            // del catálogo. Esta recuperación se completará cuando existan
-            // operaciones de mantenimiento del catálogo.
             throw;
         }
     }
@@ -100,7 +107,12 @@ namespace tinysql
         const std::string& tableName
     ) const
     {
-        if (!tableCatalog_.tableExists(databaseName, tableName))
+        if (
+            !tableCatalog_.tableExists(
+                databaseName,
+                tableName
+            )
+            )
         {
             throw std::runtime_error(
                 "La tabla no existe en el catalogo."
@@ -110,11 +122,16 @@ namespace tinysql
         TableMetadata table(tableName);
 
         const std::vector<ColumnMetadata> columns =
-            getColumnsByTable(databaseName, tableName);
+            getColumnsByTable(
+                databaseName,
+                tableName
+            );
 
         for (const ColumnMetadata& column : columns)
         {
-            table.addColumn(column);
+            table.addColumn(
+                column
+            );
         }
 
         return table;
@@ -124,7 +141,9 @@ namespace tinysql
         const std::string& databaseName
     ) const
     {
-        return tableCatalog_.getTablesByDatabase(databaseName);
+        return tableCatalog_.getTablesByDatabase(
+            databaseName
+        );
     }
 
     std::vector<ColumnMetadata> SystemCatalog::getColumnsByTable(
@@ -142,7 +161,9 @@ namespace tinysql
 
         for (const SystemColumnEntry& entry : entries)
         {
-            columns.push_back(entry.column);
+            columns.push_back(
+                entry.column
+            );
         }
 
         return columns;
@@ -152,8 +173,116 @@ namespace tinysql
         const std::string& databaseName
     ) const
     {
-        return indexCatalog_.getIndexesByDatabase(databaseName);
+        return indexCatalog_.getIndexesByDatabase(
+            databaseName
+        );
     }
+
+    bool SystemCatalog::indexExists(
+        const std::string& databaseName,
+        const std::string& indexName
+    ) const
+    {
+        return indexCatalog_.indexExists(
+            databaseName,
+            indexName
+        );
+    }
+
+    // Registra un índice después de validar base, tabla, columna y duplicados.
+    void SystemCatalog::addIndex(
+        const std::string& databaseName,
+        const IndexMetadata& index
+    )
+    {
+        if (!databaseCatalog_.databaseExists(databaseName))
+        {
+            throw std::runtime_error(
+                "La base de datos no existe en el catalogo."
+            );
+        }
+
+        if (
+            !tableCatalog_.tableExists(
+                databaseName,
+                index.getTableName()
+            )
+            )
+        {
+            throw std::runtime_error(
+                "La tabla no existe en el catalogo."
+            );
+        }
+
+        if (
+            indexCatalog_.indexExists(
+                databaseName,
+                index.getName()
+            )
+            )
+        {
+            throw std::runtime_error(
+                "El indice ya existe en el catalogo."
+            );
+        }
+
+        const std::vector<ColumnMetadata> columns =
+            getColumnsByTable(
+                databaseName,
+                index.getTableName()
+            );
+
+        bool columnFound = false;
+
+        for (const ColumnMetadata& column : columns)
+        {
+            if (
+                column.getName() ==
+                index.getColumnName()
+                )
+            {
+                columnFound = true;
+                break;
+            }
+        }
+
+        if (!columnFound)
+        {
+            throw std::runtime_error(
+                "La columna no existe en la tabla."
+            );
+        }
+
+        const std::vector<SystemIndexEntry> indexes =
+            indexCatalog_.getIndexesByDatabase(
+                databaseName
+            );
+
+        for (const SystemIndexEntry& existingIndex : indexes)
+        {
+            if (
+                existingIndex.index.getTableName() ==
+                index.getTableName() &&
+                existingIndex.index.getColumnName() ==
+                index.getColumnName()
+                )
+            {
+                throw std::runtime_error(
+                    "Ya existe un indice para esa columna."
+                );
+            }
+        }
+
+        SystemIndexEntry entry{
+            databaseName,
+            index
+        };
+
+        indexCatalog_.addIndex(
+            entry
+        );
+    }
+
     void SystemCatalog::dropTable(
         const std::string& databaseName,
         const std::string& tableName
@@ -166,7 +295,12 @@ namespace tinysql
             );
         }
 
-        if (!tableCatalog_.tableExists(databaseName, tableName))
+        if (
+            !tableCatalog_.tableExists(
+                databaseName,
+                tableName
+            )
+            )
         {
             throw std::runtime_error(
                 "La tabla no existe en el catalogo."

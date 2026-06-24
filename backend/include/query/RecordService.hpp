@@ -19,12 +19,15 @@
 namespace tinysql
 {
     // Coordina las operaciones relacionadas con los registros.
+    class IndexService;
+
     class RecordService
     {
     public:
         RecordService(
             SystemCatalog& systemCatalog,
-            const TableFileManager& tableFileManager
+            const TableFileManager& tableFileManager,
+            IndexService& indexService
         );
 
         QueryResult insert(
@@ -51,6 +54,7 @@ namespace tinysql
         InsertValueConverter valueConverter_;
         ConditionEvaluator conditionEvaluator_;
         RecordQuickSort recordQuickSort_;
+        IndexService& indexService_;
 
         bool isSystemCatalogTable(
             const std::string& tableName

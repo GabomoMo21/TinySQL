@@ -382,6 +382,43 @@ namespace tinysql
                     );
                 }
 
+                else if (upperLexeme == "INDEX")
+                {
+                    tokens.push_back(
+                        { TokenType::IndexKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "ON")
+                {
+                    tokens.push_back(
+                        { TokenType::OnKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "OF")
+                {
+                    tokens.push_back(
+                        { TokenType::OfKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "TYPE")
+                {
+                    tokens.push_back(
+                        { TokenType::TypeKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "BTREE")
+                {
+                    tokens.push_back(
+                        { TokenType::BTreeKeyword, lexeme }
+                    );
+                }
+                else if (upperLexeme == "BST")
+                {
+                    tokens.push_back(
+                        { TokenType::BstKeyword, lexeme }
+                    );
+                }
+
                 // LIKE se utiliza para buscar patrones dentro de columnas VARCHAR.
                 else if (upperLexeme == "LIKE")
                 {

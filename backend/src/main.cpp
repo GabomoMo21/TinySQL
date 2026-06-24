@@ -15,6 +15,7 @@
 #include "query/TableService.hpp"
 #include "storage/TableFileManager.hpp"
 #include "query/RecordService.hpp"
+#include "query/IndexService.hpp"
 
 
 
@@ -68,15 +69,22 @@ int main()
             tableFileManager
         );
 
-        tinysql::RecordService recordService(
+        tinysql::IndexService indexService(
             systemCatalog,
             tableFileManager
+        );
+
+        tinysql::RecordService recordService(
+            systemCatalog,
+            tableFileManager,
+            indexService
         );
 
         tinysql::QueryProcessor queryProcessor(
             databaseService,
             tableService,
-            recordService
+            recordService,
+            indexService
         );
 
        

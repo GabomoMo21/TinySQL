@@ -11,11 +11,13 @@ namespace tinysql
     QueryProcessor::QueryProcessor(
         DatabaseService& databaseService,
         TableService& tableService,
-        RecordService& recordService
+        RecordService& recordService,
+        IndexService& indexService
     )
         : databaseService_(databaseService),
         tableService_(tableService),
-        recordService_(recordService)
+        recordService_(recordService),
+        indexService_(indexService)
     {
     }
 
@@ -46,6 +48,7 @@ namespace tinysql
                     databaseService_.createDatabase(
                         statement.databaseName
                     );
+
                 break;
 
             case SqlStatementType::SetDatabase:
@@ -53,6 +56,7 @@ namespace tinysql
                     databaseService_.setDatabase(
                         statement.databaseName
                     );
+
                 break;
 
             case SqlStatementType::CreateTable:
@@ -63,6 +67,7 @@ namespace tinysql
                             ErrorCode::InternalError,
                             "El parser no produjo los datos necesarios para CREATE TABLE."
                         );
+
                     break;
                 }
 
@@ -71,6 +76,27 @@ namespace tinysql
                         request.getDatabaseName(),
                         statement.table.value()
                     );
+
+                break;
+
+            case SqlStatementType::CreateIndex:
+                if (!statement.createIndex.has_value())
+                {
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para CREATE INDEX."
+                        );
+
+                    break;
+                }
+
+                result =
+                    indexService_.createIndex(
+                        request.getDatabaseName(),
+                        statement.createIndex.value()
+                    );
+
                 break;
 
             case SqlStatementType::Insert:
@@ -81,6 +107,7 @@ namespace tinysql
                             ErrorCode::InternalError,
                             "El parser no produjo los datos necesarios para INSERT."
                         );
+
                     break;
                 }
 
@@ -89,6 +116,7 @@ namespace tinysql
                         request.getDatabaseName(),
                         statement.insert.value()
                     );
+
                 break;
 
             case SqlStatementType::Select:
@@ -99,6 +127,7 @@ namespace tinysql
                             ErrorCode::InternalError,
                             "El parser no produjo los datos necesarios para SELECT."
                         );
+
                     break;
                 }
 
@@ -107,6 +136,7 @@ namespace tinysql
                         request.getDatabaseName(),
                         statement.select.value()
                     );
+
                 break;
 
             case SqlStatementType::Delete:
@@ -117,6 +147,7 @@ namespace tinysql
                             ErrorCode::InternalError,
                             "El parser no produjo los datos necesarios para DELETE."
                         );
+
                     break;
                 }
 
@@ -125,7 +156,9 @@ namespace tinysql
                         request.getDatabaseName(),
                         statement.deleteStatement.value()
                     );
+
                 break;
+
             case SqlStatementType::Update:
                 if (!statement.update.has_value())
                 {
@@ -142,25 +175,6 @@ namespace tinysql
                     recordService_.updateRecords(
                         request.getDatabaseName(),
                         statement.update.value()
-                    );
-
-                break;
-            case SqlStatementType::DropTable:
-                if (!statement.dropTable.has_value())
-                {
-                    result =
-                        QueryResult::failure(
-                            ErrorCode::InternalError,
-                            "El parser no produjo los datos necesarios para DROP TABLE."
-                        );
-
-                    break;
-                }
-
-                result =
-                    tableService_.dropTable(
-                        request.getDatabaseName(),
-                        statement.dropTable.value()
                     );
 
                 break;

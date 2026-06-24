@@ -20,6 +20,7 @@
 #include "core/DatabaseMetadata.hpp"
 #include "core/IndexMetadata.hpp"
 #include "core/IndexType.hpp"
+#include "query/IndexService.hpp"
 
 
 namespace tinysql
@@ -27,10 +28,12 @@ namespace tinysql
     // Conserva las referencias al catálogo y al administrador físico de tablas.
     RecordService::RecordService(
         SystemCatalog& systemCatalog,
-        const TableFileManager& tableFileManager
+        const TableFileManager& tableFileManager,
+        IndexService& indexService
     )
         : systemCatalog_(systemCatalog),
-        tableFileManager_(tableFileManager)
+        tableFileManager_(tableFileManager),
+        indexService_(indexService)
     {
     }
 
@@ -105,7 +108,19 @@ namespace tinysql
                 return conversionResult;
             }
 
-            // El offset se utilizará posteriormente para actualizar los índices.
+            // Antes de escribir el registro, se valida contra los índices BST cargados.
+            const QueryResult indexValidationResult =
+                indexService_.validateInsertAgainstIndexes(
+                    databaseName,
+                    table,
+                    convertedValues
+                );
+
+            if (!indexValidationResult.isSuccess())
+            {
+                return indexValidationResult;
+            }
+
             const std::uint64_t recordOffset =
                 tableFileManager_.appendRecord(
                     databaseName,
@@ -113,7 +128,13 @@ namespace tinysql
                     convertedValues
                 );
 
-            static_cast<void>(recordOffset);
+            // Después de escribir, se agrega el offset a los índices BST cargados.
+            indexService_.insertRecordIntoIndexes(
+                databaseName,
+                table,
+                convertedValues,
+                recordOffset
+            );
 
             QueryResult result =
                 QueryResult::success(
@@ -426,12 +447,55 @@ namespace tinysql
                     orderBy.direction;
             }
 
-            // La lectura omite automáticamente los registros eliminados.
-            std::vector<StoredRecord> records =
-                tableFileManager_.readAllRecords(
-                    databaseName,
-                    table
-                );
+            // Se intenta usar un índice BST si el WHERE apunta a una columna indexada.
+            std::vector<StoredRecord> records;
+
+            bool usedIndex =
+                false;
+
+            if (hasWhereCondition)
+            {
+                std::vector<std::uint64_t> indexedOffsets;
+
+                usedIndex =
+                    indexService_.tryFindOffsets(
+                        databaseName,
+                        statement.tableName,
+                        statement.whereCondition.value().columnName,
+                        whereOperator,
+                        whereComparisonValue,
+                        tableColumns[whereColumnIndex].getType(),
+                        indexedOffsets
+                    );
+
+                if (usedIndex)
+                {
+                    records.reserve(
+                        indexedOffsets.size()
+                    );
+
+                    for (const std::uint64_t offset : indexedOffsets)
+                    {
+                        records.push_back(
+                            tableFileManager_.readRecordAt(
+                                databaseName,
+                                table,
+                                offset
+                            )
+                        );
+                    }
+                }
+            }
+
+            // Si no existe un índice usable, se mantiene la lectura secuencial normal.
+            if (!usedIndex)
+            {
+                records =
+                    tableFileManager_.readAllRecords(
+                        databaseName,
+                        table
+                    );
+            }
 
             std::vector<StoredRecord> filteredRecords;
 

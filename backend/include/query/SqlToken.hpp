@@ -54,6 +54,13 @@ namespace tinysql
         AscKeyword,
         DescKeyword,
 
+        IndexKeyword,
+        OnKeyword,
+        OfKeyword,
+        TypeKeyword,
+        BTreeKeyword,
+        BstKeyword,
+
         End
     };
 

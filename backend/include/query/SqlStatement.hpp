@@ -4,20 +4,21 @@
 #include <string>
 
 #include "core/TableMetadata.hpp"
+#include "query/CreateIndexStatement.hpp"
+#include "query/DeleteStatement.hpp"
+#include "query/DropTableStatement.hpp"
 #include "query/InsertStatement.hpp"
 #include "query/SelectStatement.hpp"
-#include "query/DeleteStatement.hpp"
 #include "query/UpdateStatement.hpp"
-#include "query/DropTableStatement.hpp"
 
 namespace tinysql
 {
-    // Identifica las sentencias que puede procesar actualmente TinySQLDb.
     enum class SqlStatementType
     {
         CreateDatabase,
         SetDatabase,
         CreateTable,
+        CreateIndex,
         Insert,
         Select,
         Delete,
@@ -25,7 +26,6 @@ namespace tinysql
         Update
     };
 
-    // Reúne la información producida por el parser para cada sentencia.
     struct SqlStatement
     {
         SqlStatementType type;
@@ -39,12 +39,17 @@ namespace tinysql
 
         std::optional<SelectStatement> select =
             std::nullopt;
+
         std::optional<DeleteStatement> deleteStatement =
             std::nullopt;
+
         std::optional<UpdateStatement> update =
             std::nullopt;
+
         std::optional<DropTableStatement> dropTable =
             std::nullopt;
-    };
 
+        std::optional<CreateIndexStatement> createIndex =
+            std::nullopt;
+    };
 }

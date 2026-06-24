@@ -21,6 +21,8 @@
 #include "query/DeleteStatement.hpp"
 #include "query/UpdateStatement.hpp"
 #include "query/DropTableStatement.hpp"
+#include "query/CreateIndexStatement.hpp"
+#include "core/IndexType.hpp"
 
 namespace tinysql
 {
@@ -53,8 +55,13 @@ namespace tinysql
                         return parseCreateTable();
                     }
 
+                    if (match(TokenType::IndexKeyword))
+                    {
+                        return parseCreateIndex();
+                    }
+
                     throw std::runtime_error(
-                        "Despues de CREATE se esperaba DATABASE o TABLE."
+                        "Despues de CREATE se esperaba DATABASE, TABLE o INDEX."
                     );
                 }
                 if (match(TokenType::DropKeyword))
@@ -250,6 +257,89 @@ namespace tinysql
 
                 parsedStatement.select =
                     std::nullopt;
+
+                return parsedStatement;
+            }
+
+            // Interpreta CREATE INDEX nombre ON tabla(columna) OF TYPE BTREE|BST.
+            SqlStatement parseCreateIndex()
+            {
+                CreateIndexStatement createIndexStatement;
+
+                createIndexStatement.indexName =
+                    consumeIdentifier(
+                        "Despues de CREATE INDEX se esperaba el nombre del indice."
+                    );
+
+                consume(
+                    TokenType::OnKeyword,
+                    "Despues del nombre del indice se esperaba ON."
+                );
+
+                createIndexStatement.tableName =
+                    consumeIdentifier(
+                        "Despues de ON se esperaba el nombre de la tabla."
+                    );
+
+                consume(
+                    TokenType::LeftParenthesis,
+                    "Despues del nombre de la tabla se esperaba '('."
+                );
+
+                createIndexStatement.columnName =
+                    consumeIdentifier(
+                        "Se esperaba el nombre de la columna del indice."
+                    );
+
+                consume(
+                    TokenType::RightParenthesis,
+                    "Despues del nombre de la columna se esperaba ')'."
+                );
+
+                consume(
+                    TokenType::OfKeyword,
+                    "Despues de la columna se esperaba OF."
+                );
+
+                consume(
+                    TokenType::TypeKeyword,
+                    "Despues de OF se esperaba TYPE."
+                );
+
+                if (match(TokenType::BTreeKeyword))
+                {
+                    createIndexStatement.type =
+                        IndexType::BTree;
+                }
+                else if (match(TokenType::BstKeyword))
+                {
+                    createIndexStatement.type =
+                        IndexType::BST;
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "El tipo de indice debe ser BTREE o BST."
+                    );
+                }
+
+                consumeOptionalSemicolonAndEnd();
+
+                SqlStatement parsedStatement;
+
+                parsedStatement.type =
+                    SqlStatementType::CreateIndex;
+
+                parsedStatement.databaseName = "";
+                parsedStatement.table = std::nullopt;
+                parsedStatement.insert = std::nullopt;
+                parsedStatement.select = std::nullopt;
+                parsedStatement.deleteStatement = std::nullopt;
+                parsedStatement.update = std::nullopt;
+                parsedStatement.dropTable = std::nullopt;
+
+                parsedStatement.createIndex =
+                    std::move(createIndexStatement);
 
                 return parsedStatement;
             }
