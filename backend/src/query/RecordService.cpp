@@ -505,8 +505,14 @@ namespace tinysql
             );
 
             // WHERE se aplica antes del ordenamiento.
+            // WHERE se aplica antes del ordenamiento.
             for (StoredRecord& record : records)
             {
+                if (record.deleted)
+                {
+                    continue;
+                }
+
                 if (hasWhereCondition)
                 {
                     if (
@@ -779,16 +785,63 @@ namespace tinysql
                 }
             }
 
-            std::vector<StoredRecord> records =
-                tableFileManager_.readAllRecords(
-                    databaseName,
-                    table
-                );
+            std::vector<StoredRecord> records;
+
+            bool usedIndex =
+                false;
+
+            if (hasWhereCondition)
+            {
+                std::vector<std::uint64_t> indexedOffsets;
+
+                usedIndex =
+                    indexService_.tryFindOffsets(
+                        databaseName,
+                        statement.tableName,
+                        statement.whereCondition.value().columnName,
+                        whereOperator,
+                        whereComparisonValue,
+                        tableColumns[whereColumnIndex].getType(),
+                        indexedOffsets
+                    );
+
+                if (usedIndex)
+                {
+                    records.reserve(
+                        indexedOffsets.size()
+                    );
+
+                    for (const std::uint64_t offset : indexedOffsets)
+                    {
+                        records.push_back(
+                            tableFileManager_.readRecordAt(
+                                databaseName,
+                                table,
+                                offset
+                            )
+                        );
+                    }
+                }
+            }
+
+            if (!usedIndex)
+            {
+                records =
+                    tableFileManager_.readAllRecords(
+                        databaseName,
+                        table
+                    );
+            }
 
             std::size_t affectedRows = 0;
 
             for (const StoredRecord& record : records)
             {
+                if (record.deleted)
+                {
+                    continue;
+                }
+
                 bool shouldDelete = true;
 
                 if (hasWhereCondition)
@@ -839,9 +892,14 @@ namespace tinysql
                 }
             }
 
+            const std::string deleteMessage =
+                usedIndex
+                ? "Eliminacion ejecutada correctamente usando indice. Filas afectadas: "
+                : "Eliminacion ejecutada correctamente. Filas afectadas: ";
+
             QueryResult result =
                 QueryResult::success(
-                    "Eliminacion ejecutada correctamente. Filas afectadas: " +
+                    deleteMessage +
                     std::to_string(affectedRows) +
                     "."
                 );
@@ -1055,27 +1113,64 @@ namespace tinysql
                 }
             }
 
-            std::vector<StoredRecord> records =
-                tableFileManager_.readAllRecords(
-                    databaseName,
-                    table
-                );
+            std::vector<StoredRecord> records;
 
-            std::vector<bool> shouldUpdateByPosition(
-                records.size(),
-                false
-            );
+            bool usedIndex =
+                false;
+
+            if (hasWhereCondition)
+            {
+                std::vector<std::uint64_t> indexedOffsets;
+
+                usedIndex =
+                    indexService_.tryFindOffsets(
+                        databaseName,
+                        statement.tableName,
+                        statement.whereCondition.value().columnName,
+                        whereOperator,
+                        whereComparisonValue,
+                        tableColumns[whereColumnIndex].getType(),
+                        indexedOffsets
+                    );
+
+                if (usedIndex)
+                {
+                    records.reserve(
+                        indexedOffsets.size()
+                    );
+
+                    for (const std::uint64_t offset : indexedOffsets)
+                    {
+                        records.push_back(
+                            tableFileManager_.readRecordAt(
+                                databaseName,
+                                table,
+                                offset
+                            )
+                        );
+                    }
+                }
+            }
+
+            if (!usedIndex)
+            {
+                records =
+                    tableFileManager_.readAllRecords(
+                        databaseName,
+                        table
+                    );
+            }
+
+            std::unordered_set<std::uint64_t> offsetsToUpdate;
 
             std::size_t affectedRows = 0;
 
-            for (
-                std::size_t recordIndex = 0;
-                recordIndex < records.size();
-                ++recordIndex
-                )
+            for (const StoredRecord& record : records)
             {
-                const StoredRecord& record =
-                    records[recordIndex];
+                if (record.deleted)
+                {
+                    continue;
+                }
 
                 bool shouldUpdate = true;
 
@@ -1105,8 +1200,9 @@ namespace tinysql
                     continue;
                 }
 
-                shouldUpdateByPosition[recordIndex] =
-                    true;
+                offsetsToUpdate.insert(
+                    record.offset
+                );
 
                 ++affectedRows;
             }
@@ -1140,15 +1236,14 @@ namespace tinysql
                 {
                     std::unordered_set<std::string> seenKeys;
 
-                    for (
-                        std::size_t recordIndex = 0;
-                        recordIndex < records.size();
-                        ++recordIndex
-                        )
-                    {
-                        const StoredRecord& record =
-                            records[recordIndex];
+                    const std::vector<StoredRecord> allActiveRecords =
+                        tableFileManager_.readAllRecords(
+                            databaseName,
+                            table
+                        );
 
+                    for (const StoredRecord& record : allActiveRecords)
+                    {
                         if (
                             targetColumnIndex >=
                             record.values.size()
@@ -1160,7 +1255,7 @@ namespace tinysql
                         }
 
                         const Value& candidateValue =
-                            shouldUpdateByPosition[recordIndex]
+                            offsetsToUpdate.count(record.offset) > 0
                             ? convertedNewValue
                             : record.values[targetColumnIndex];
 
@@ -1188,19 +1283,14 @@ namespace tinysql
                 }
             }
 
-            for (
-                std::size_t recordIndex = 0;
-                recordIndex < records.size();
-                ++recordIndex
-                )
+            for (const StoredRecord& record : records)
             {
-                if (!shouldUpdateByPosition[recordIndex])
+                if (
+                    offsetsToUpdate.count(record.offset) == 0
+                    )
                 {
                     continue;
                 }
-
-                const StoredRecord& record =
-                    records[recordIndex];
 
                 std::vector<Value> updatedValues =
                     record.values;
@@ -1230,9 +1320,14 @@ namespace tinysql
                 }
             }
 
+            const std::string updateMessage =
+                usedIndex
+                ? "Actualizacion ejecutada correctamente usando indice. Filas afectadas: "
+                : "Actualizacion ejecutada correctamente. Filas afectadas: ";
+
             QueryResult result =
                 QueryResult::success(
-                    "Actualizacion ejecutada correctamente. Filas afectadas: " +
+                    updateMessage +
                     std::to_string(affectedRows) +
                     "."
                 );
