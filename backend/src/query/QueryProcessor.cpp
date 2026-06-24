@@ -159,6 +159,26 @@ namespace tinysql
 
                 break;
 
+            case SqlStatementType::DropTable:
+                if (!statement.dropTable.has_value())
+                {
+                    result =
+                        QueryResult::failure(
+                            ErrorCode::InternalError,
+                            "El parser no produjo los datos necesarios para DROP TABLE."
+                        );
+
+                    break;
+                }
+
+                result =
+                    tableService_.dropTable(
+                        request.getDatabaseName(),
+                        statement.dropTable.value()
+                    );
+
+                break;
+
             case SqlStatementType::Update:
                 if (!statement.update.has_value())
                 {
