@@ -11,6 +11,7 @@
 #include "storage/StoragePaths.hpp"
 #include "storage/StoredRecord.hpp"
 #include "storage/BinaryReader.hpp"
+#include "storage/RecordCipher.hpp"
 
 namespace tinysql
 {
@@ -89,6 +90,7 @@ namespace tinysql
         ) const;
 
         const StoragePaths& storagePaths_;
+        RecordCipher recordCipher_;
 
         StoredRecord deserializeRecord(
             const TableMetadata& table,

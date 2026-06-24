@@ -618,26 +618,33 @@ T readNumberFromRecord(
             static_cast<std::size_t>(recordCount)
         );
 
-        for (std::uintmax_t index = 0;
+        for (
+            std::uintmax_t index = 0;
             index < recordCount;
-            ++index)
+            ++index
+            )
         {
             const std::uint64_t recordOffset =
                 reader.getPosition();
 
-            std::vector<std::uint8_t> recordBytes(
+            std::vector<std::uint8_t> encryptedRecordBytes(
                 static_cast<std::size_t>(recordSize)
             );
 
             reader.readBytes(
-                recordBytes.data(),
-                recordBytes.size()
+                encryptedRecordBytes.data(),
+                encryptedRecordBytes.size()
             );
+
+            const std::vector<std::uint8_t> decryptedRecordBytes =
+                recordCipher_.decrypt(
+                    encryptedRecordBytes
+                );
 
             StoredRecord record =
                 deserializeRecord(
                     table,
-                    recordBytes,
+                    decryptedRecordBytes,
                     recordOffset
                 );
 
@@ -719,18 +726,23 @@ T readNumberFromRecord(
 
         reader.seek(offset);
 
-        std::vector<std::uint8_t> recordBytes(
+        std::vector<std::uint8_t> encryptedRecordBytes(
             static_cast<std::size_t>(recordSize)
         );
 
         reader.readBytes(
-            recordBytes.data(),
-            recordBytes.size()
+            encryptedRecordBytes.data(),
+            encryptedRecordBytes.size()
         );
+
+        const std::vector<std::uint8_t> decryptedRecordBytes =
+            recordCipher_.decrypt(
+                encryptedRecordBytes
+            );
 
         return deserializeRecord(
             table,
-            recordBytes,
+            decryptedRecordBytes,
             offset
         );
     }
@@ -811,7 +823,6 @@ T readNumberFromRecord(
             );
         }
 
-        // Se valida la cabecera antes de abrir nuevamente el archivo para escritura.
         {
             BinaryReader headerReader(tableFilePath);
 
@@ -821,11 +832,33 @@ T readNumberFromRecord(
             );
         }
 
-        const std::vector<std::uint8_t> record =
+        const std::vector<std::uint8_t> serializedRecord =
             serializeRecord(
                 table,
                 values
             );
+
+        const std::uint64_t recordSize =
+            calculateRecordSize(table);
+
+        if (serializedRecord.size() != recordSize)
+        {
+            throw std::runtime_error(
+                "El registro serializado no coincide con el tamano esperado."
+            );
+        }
+
+        const std::vector<std::uint8_t> encryptedRecord =
+            recordCipher_.encrypt(
+                serializedRecord
+            );
+
+        if (encryptedRecord.size() != serializedRecord.size())
+        {
+            throw std::runtime_error(
+                "El registro cifrado no conserva el tamano original."
+            );
+        }
 
         const std::uintmax_t rawOffset =
             std::filesystem::file_size(
@@ -848,8 +881,8 @@ T readNumberFromRecord(
         );
 
         writer.writeBytes(
-            record.data(),
-            record.size()
+            encryptedRecord.data(),
+            encryptedRecord.size()
         );
 
         return static_cast<std::uint64_t>(
@@ -924,6 +957,38 @@ T readNumberFromRecord(
             );
         }
 
+        BinaryReader reader(tableFilePath);
+
+        reader.seek(offset);
+
+        std::vector<std::uint8_t> encryptedRecordBytes(
+            static_cast<std::size_t>(recordSize)
+        );
+
+        reader.readBytes(
+            encryptedRecordBytes.data(),
+            encryptedRecordBytes.size()
+        );
+
+        std::vector<std::uint8_t> decryptedRecordBytes =
+            recordCipher_.decrypt(
+                encryptedRecordBytes
+            );
+
+        if (decryptedRecordBytes.empty())
+        {
+            throw std::runtime_error(
+                "El registro no tiene datos para marcar tombstone."
+            );
+        }
+
+        decryptedRecordBytes[0] = 1;
+
+        const std::vector<std::uint8_t> encryptedUpdatedRecord =
+            recordCipher_.encrypt(
+                decryptedRecordBytes
+            );
+
         std::fstream file(
             tableFilePath,
             std::ios::binary |
@@ -950,11 +1015,9 @@ T readNumberFromRecord(
             );
         }
 
-        const std::uint8_t deletedFlag = 1;
-
         file.write(
-            reinterpret_cast<const char*>(&deletedFlag),
-            sizeof(deletedFlag)
+            reinterpret_cast<const char*>(encryptedUpdatedRecord.data()),
+            static_cast<std::streamsize>(encryptedUpdatedRecord.size())
         );
 
         if (!file)
@@ -1039,6 +1102,10 @@ T readNumberFromRecord(
                 table,
                 values
             );
+        const std::vector<std::uint8_t> encryptedRecord =
+            recordCipher_.encrypt(
+                serializedRecord
+            );
 
         if (serializedRecord.size() != recordSize)
         {
@@ -1074,8 +1141,8 @@ T readNumberFromRecord(
         }
 
         file.write(
-            reinterpret_cast<const char*>(serializedRecord.data()),
-            static_cast<std::streamsize>(serializedRecord.size())
+            reinterpret_cast<const char*>(encryptedRecord.data()),
+            static_cast<std::streamsize>(encryptedRecord.size())
         );
 
         if (!file)
