@@ -588,9 +588,14 @@ namespace tinysql
                 );
             }
 
+            const std::string selectMessage =
+                usedIndex
+                ? "Consulta ejecutada correctamente usando indice BST. Filas encontradas: "
+                : "Consulta ejecutada correctamente. Filas encontradas: ";
+
             QueryResult result =
                 QueryResult::success(
-                    "Consulta ejecutada correctamente. Filas encontradas: " +
+                    selectMessage +
                     std::to_string(projectedRows.size()) +
                     "."
                 );
@@ -1354,6 +1359,10 @@ namespace tinysql
 
         for (StoredRecord& record : records)
         {
+            if (record.deleted)
+            {
+                continue;
+            }
             if (hasWhereCondition)
             {
                 if (

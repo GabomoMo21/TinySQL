@@ -32,6 +32,7 @@ namespace tinysql
             const std::string& databaseName,
             const CreateIndexStatement& statement
         ) const;
+        QueryResult rebuildLoadedIndexes() const;
 
         // Intenta buscar offsets usando un índice BST cargado en memoria.
         // Retorna true si encontró un índice usable, aunque la búsqueda no devuelva filas.

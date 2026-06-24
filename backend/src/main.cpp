@@ -16,7 +16,7 @@
 #include "storage/TableFileManager.hpp"
 #include "query/RecordService.hpp"
 #include "query/IndexService.hpp"
-
+#include "core/QueryResult.hpp"
 
 
 int main()
@@ -73,6 +73,22 @@ int main()
             systemCatalog,
             tableFileManager
         );
+        const tinysql::QueryResult rebuildIndexesResult =
+            indexService.rebuildLoadedIndexes();
+
+        if (!rebuildIndexesResult.isSuccess())
+        {
+            std::cerr
+                << "Advertencia: "
+                << rebuildIndexesResult.getMessage()
+                << '\n';
+        }
+        else
+        {
+            std::cout
+                << rebuildIndexesResult.getMessage()
+                << '\n';
+        }
 
         tinysql::RecordService recordService(
             systemCatalog,

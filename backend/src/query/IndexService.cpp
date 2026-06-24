@@ -17,6 +17,7 @@
 #include "core/Value.hpp"
 #include "query/IndexKey.hpp"
 #include "storage/StoredRecord.hpp"
+#include "core/DatabaseMetadata.hpp"
 
 namespace tinysql
 {
@@ -234,7 +235,135 @@ namespace tinysql
             );
         }
     }
+    QueryResult IndexService::rebuildLoadedIndexes() const
+    {
+        try
+        {
+            bstIndexes_.clear();
 
+            std::size_t rebuiltIndexes = 0;
+            std::size_t rebuiltEntries = 0;
+
+            const std::vector<DatabaseMetadata> databases =
+                systemCatalog_.getAllDatabases();
+
+            for (const DatabaseMetadata& database : databases)
+            {
+                const std::string& databaseName =
+                    database.getName();
+
+                const std::vector<SystemIndexEntry> indexes =
+                    systemCatalog_.getIndexesByDatabase(
+                        databaseName
+                    );
+
+                for (const SystemIndexEntry& entry : indexes)
+                {
+                    const IndexMetadata& indexMetadata =
+                        entry.index;
+
+                    // Por ahora solo reconstruimos BST.
+                    // BTREE se implementa en el siguiente bloque grande.
+                    if (indexMetadata.getType() != IndexType::BST)
+                    {
+                        continue;
+                    }
+
+                    if (
+                        !systemCatalog_.tableExists(
+                            databaseName,
+                            indexMetadata.getTableName()
+                        )
+                        )
+                    {
+                        throw std::runtime_error(
+                            "SystemIndexes referencia una tabla inexistente."
+                        );
+                    }
+
+                    if (
+                        !tableFileManager_.tableFileExists(
+                            databaseName,
+                            indexMetadata.getTableName()
+                        )
+                        )
+                    {
+                        throw std::runtime_error(
+                            "SystemIndexes referencia una tabla sin archivo fisico."
+                        );
+                    }
+
+                    const TableMetadata table =
+                        systemCatalog_.getTable(
+                            databaseName,
+                            indexMetadata.getTableName()
+                        );
+
+                    const std::vector<ColumnMetadata>& columns =
+                        table.getColumns();
+
+                    std::size_t columnIndex = 0;
+                    bool columnFound = false;
+
+                    for (
+                        std::size_t index = 0;
+                        index < columns.size();
+                        ++index
+                        )
+                    {
+                        if (
+                            columns[index].getName() ==
+                            indexMetadata.getColumnName()
+                            )
+                        {
+                            columnIndex = index;
+                            columnFound = true;
+                            break;
+                        }
+                    }
+
+                    if (!columnFound)
+                    {
+                        throw std::runtime_error(
+                            "SystemIndexes referencia una columna inexistente."
+                        );
+                    }
+
+                    rebuiltEntries +=
+                        buildBstIndex(
+                            databaseName,
+                            indexMetadata,
+                            table,
+                            columnIndex
+                        );
+
+                    ++rebuiltIndexes;
+                }
+            }
+
+            QueryResult result =
+                QueryResult::success(
+                    "Indices BST reconstruidos correctamente. Indices: " +
+                    std::to_string(rebuiltIndexes) +
+                    ". Entradas: " +
+                    std::to_string(rebuiltEntries) +
+                    "."
+                );
+
+            result.setAffectedRows(
+                rebuiltIndexes
+            );
+
+            return result;
+        }
+        catch (const std::exception&)
+        {
+            return QueryResult::failure(
+                ErrorCode::StorageError,
+                "No se pudieron reconstruir los indices al iniciar el servidor."
+            );
+        }
+    }
     bool IndexService::isValidIdentifier(
         const std::string& identifier
     ) const
