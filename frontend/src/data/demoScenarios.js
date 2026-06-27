@@ -1,249 +1,894 @@
-// Escenarios reales del repositorio TinySQLDb para pruebas y defensa.
-// El frontend no lee archivos locales en runtime; por eso los scripts se embeben aquí.
+// Escenarios reales de TinySQLDb para pruebas y defensa.
+// El frontend no lee archivos .sql locales en runtime; por eso los scripts se embeben aquí.
+// Los benchmarks se generan dinámicamente para evitar pegar miles de INSERT manuales.
+
+const BENCHMARK_RECORD_COUNT = 1000;
+
+function countStatements(script) {
+    return script
+        .split(";")
+        .map((statement) => statement.trim())
+        .filter(Boolean).length;
+}
+
+function scenario(config) {
+    return {
+        ...config,
+        statementCount: countStatements(config.script),
+    };
+}
+
+function buildBenchmarkScript(databaseName, indexType = null) {
+    const lines = [
+        `CREATE DATABASE ${databaseName};`,
+        `SET DATABASE ${databaseName};`,
+        "",
+        "CREATE TABLE Estudiante AS (",
+        "  ID INTEGER NOT NULL,",
+        "  Nombre VARCHAR(30) NOT NULL",
+        ");",
+    ];
+
+    for (let id = 1; id <= BENCHMARK_RECORD_COUNT; id += 1) {
+        lines.push(`INSERT INTO Estudiante VALUES(${id}, "Nombre${id}");`);
+    }
+
+    if (indexType !== null) {
+        lines.push(
+            `CREATE INDEX IDX_Estudiante_ID_${indexType} ON Estudiante(ID) OF TYPE ${indexType};`
+        );
+    }
+
+    lines.push("");
+
+    for (let id = 900; id <= 948; id += 1) {
+        lines.push(`SELECT * FROM Estudiante WHERE ID = ${id};`);
+    }
+
+    lines.push("SELECT * FROM Estudiante WHERE ID = 999;");
+
+    return lines.join("\n");
+}
 
 export const demoScenarios = [
-  {
-    "id": "crud-completo",
-    "title": "CRUD completo",
-    "category": "Success Path",
-    "sourceFile": "scripts/success/01_crud_fase_f.sql",
-    "description": "Crea base, crea tabla, inserta registros, consulta, actualiza, elimina y prueba DROP TABLE.",
-    "expectedBehavior": "Todas las operaciones deben completarse correctamente.",
-    "heavy": false,
-    "errorScenario": false,
-    "recommended": true,
-    "script": "CREATE DATABASE FaseFSuccess;\nSET DATABASE FaseFSuccess;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL,\n  Nota DOUBLE NULL,\n  FechaNacimiento DATETIME NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\", 90.5, \"2000-01-01 01:02:00\");\nINSERT INTO Estudiante VALUES(2, \"Juan\", 75.0, \"2000-01-02 01:02:00\");\nINSERT INTO Estudiante VALUES(3, \"Pedro\", 88.0, \"2000-01-03 01:02:00\");\n\nSELECT * FROM Estudiante;\n\nSELECT Nombre FROM Estudiante WHERE ID = 2;\n\nSELECT * FROM Estudiante ORDER BY Nombre ASC;\n\nUPDATE Estudiante SET Nombre = \"Felipe\" WHERE ID = 1;\n\nSELECT * FROM Estudiante WHERE ID = 1;\n\nDELETE FROM Estudiante WHERE ID = 2;\n\nSELECT * FROM Estudiante ORDER BY ID ASC;\n\nUPDATE Estudiante SET Nombre = \"Todos\";\n\nSELECT * FROM Estudiante;\n\nDELETE FROM Estudiante;\n\nSELECT * FROM Estudiante;\n\nDROP TABLE Estudiante;",
-    "statementCount": 18
-  },
-  {
-    "id": "system-catalog",
-    "title": "System Catalog",
-    "category": "Metadata",
-    "sourceFile": "scripts/success/02_system_catalog.sql",
-    "description": "Consulta SystemDatabases, SystemTables, SystemColumns y SystemIndexes.",
-    "expectedBehavior": "Debe mostrar metadata registrada en el catálogo del sistema.",
-    "heavy": false,
-    "errorScenario": false,
-    "recommended": true,
-    "script": "CREATE DATABASE CatalogSuccess;\nSET DATABASE CatalogSuccess;\n\nCREATE TABLE Curso AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(40) NOT NULL,\n  Creditos INTEGER NULL\n);\n\nCREATE TABLE Profesor AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(40) NOT NULL\n);\n\nSELECT * FROM SystemDatabases;\n\nSELECT * FROM SystemTables;\n\nSELECT * FROM SystemColumns;\n\nSELECT * FROM SystemIndexes;\n\nSELECT TableName FROM SystemTables WHERE TableName = \"Curso\";\n\nSELECT ColumnName, DataType FROM SystemColumns WHERE TableName = \"Curso\";\n\nSELECT * FROM SystemColumns ORDER BY ColumnOrder ASC;",
-    "statementCount": 11
-  },
-  {
-    "id": "drop-table-valido",
-    "title": "DROP TABLE válido",
-    "category": "Success Path",
-    "sourceFile": "scripts/success/03_drop_table.sql",
-    "description": "Valida eliminación de tabla cuando está vacía.",
-    "expectedBehavior": "DROP TABLE debe ejecutarse correctamente cuando la tabla no tiene registros.",
-    "heavy": false,
-    "errorScenario": false,
-    "recommended": false,
-    "script": "CREATE DATABASE DropSuccess;\nSET DATABASE DropSuccess;\n\nCREATE TABLE Curso AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Curso VALUES(1, \"Bases\");\n\nDELETE FROM Curso;\n\nDROP TABLE Curso;\n\nSELECT * FROM SystemTables;",
-    "statementCount": 7
-  },
-  {
-    "id": "indice-bst",
-    "title": "Índice BST",
-    "category": "Index Validation",
-    "sourceFile": "scripts/success/04_index_bst.sql",
-    "description": "Crea índice BST, consulta por columna indexada y valida consistencia con operaciones posteriores.",
-    "expectedBehavior": "Las consultas por columna indexada deben ejecutarse correctamente y el índice debe permanecer consistente.",
-    "heavy": false,
-    "errorScenario": false,
-    "recommended": true,
-    "script": "CREATE DATABASE IndexBstSuccess;\nSET DATABASE IndexBstSuccess;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\nINSERT INTO Estudiante VALUES(2, \"Juan\");\nINSERT INTO Estudiante VALUES(3, \"Pedro\");\nINSERT INTO Estudiante VALUES(4, \"Ana\");\nINSERT INTO Estudiante VALUES(5, \"Luis\");\n\nCREATE INDEX IDX_Estudiante_ID_BST ON Estudiante(ID) OF TYPE BST;\n\nSELECT * FROM Estudiante WHERE ID = 3;\n\nSELECT * FROM Estudiante WHERE ID > 3;\n\nSELECT * FROM Estudiante WHERE ID < 3;\n\nINSERT INTO Estudiante VALUES(6, \"Maria\");\n\nSELECT * FROM Estudiante WHERE ID = 6;\n\nUPDATE Estudiante SET ID = 20 WHERE ID = 2;\n\nSELECT * FROM Estudiante WHERE ID = 2;\n\nSELECT * FROM Estudiante WHERE ID = 20;\n\nDELETE FROM Estudiante WHERE ID = 20;\n\nSELECT * FROM Estudiante WHERE ID = 20;\n\nSELECT * FROM SystemIndexes;",
-    "statementCount": 20
-  },
-  {
-    "id": "indice-btree",
-    "title": "Índice BTREE",
-    "category": "Index Validation",
-    "sourceFile": "scripts/success/05_index_btree.sql",
-    "description": "Crea índice BTREE, consulta por columna indexada y valida consistencia con operaciones posteriores.",
-    "expectedBehavior": "Las consultas por columna indexada deben ejecutarse correctamente y el índice debe permanecer consistente.",
-    "heavy": false,
-    "errorScenario": false,
-    "recommended": true,
-    "script": "CREATE DATABASE IndexBTreeSuccess;\nSET DATABASE IndexBTreeSuccess;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\nINSERT INTO Estudiante VALUES(2, \"Juan\");\nINSERT INTO Estudiante VALUES(3, \"Pedro\");\nINSERT INTO Estudiante VALUES(4, \"Ana\");\nINSERT INTO Estudiante VALUES(5, \"Luis\");\nINSERT INTO Estudiante VALUES(6, \"Maria\");\nINSERT INTO Estudiante VALUES(7, \"Sofia\");\nINSERT INTO Estudiante VALUES(8, \"Carlos\");\n\nCREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;\n\nSELECT * FROM Estudiante WHERE ID = 4;\n\nSELECT * FROM Estudiante WHERE ID > 5;\n\nSELECT * FROM Estudiante WHERE ID < 3;\n\nINSERT INTO Estudiante VALUES(9, \"Nuevo\");\n\nSELECT * FROM Estudiante WHERE ID = 9;\n\nUPDATE Estudiante SET ID = 40 WHERE ID = 4;\n\nSELECT * FROM Estudiante WHERE ID = 4;\n\nSELECT * FROM Estudiante WHERE ID = 40;\n\nDELETE FROM Estudiante WHERE ID = 40;\n\nSELECT * FROM Estudiante WHERE ID = 40;\n\nSELECT * FROM SystemIndexes;",
-    "statementCount": 23
-  },
-  {
-    "id": "almacenamiento-cifrado",
-    "title": "Almacenamiento cifrado",
-    "category": "Storage",
-    "sourceFile": "scripts/success/06_encrypted_storage.sql",
-    "description": "Valida operaciones sobre tabla almacenada en archivos binarios cifrados: insert, select, update, delete, create index y consulta con índice.",
-    "expectedBehavior": "Las consultas deben funcionar desde el frontend. La verificación directa de cifrado se hace fuera del navegador inspeccionando el archivo .tbl.",
-    "heavy": false,
-    "errorScenario": false,
-    "recommended": true,
-    "script": "CREATE DATABASE EncryptionSuccess;\nSET DATABASE EncryptionSuccess;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL,\n  Nota DOUBLE NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\", 90.5);\nINSERT INTO Estudiante VALUES(2, \"Juan\", 80.0);\nINSERT INTO Estudiante VALUES(3, \"Pedro\", 70.0);\n\nSELECT * FROM Estudiante;\n\nUPDATE Estudiante SET Nombre = \"Felipe\" WHERE ID = 1;\n\nSELECT * FROM Estudiante WHERE ID = 1;\n\nDELETE FROM Estudiante WHERE ID = 2;\n\nSELECT * FROM Estudiante ORDER BY ID ASC;\n\nCREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;\n\nSELECT * FROM Estudiante WHERE ID = 3;\n\nINSERT INTO Estudiante VALUES(4, \"Ana\", 95.0);\n\nSELECT * FROM Estudiante WHERE ID = 4;\n\nSELECT * FROM SystemIndexes;",
-    "statementCount": 16
-  },
-  {
-    "id": "update-delete-con-indices",
-    "title": "UPDATE y DELETE usando índice",
-    "category": "Index Validation",
-    "sourceFile": "scripts/success/07_update_delete_with_indexes.sql",
-    "description": "Crea índice BTREE sobre ID, consulta por columna indexada, actualiza con WHERE indexado, elimina con WHERE indexado y valida que el índice quede consistente.",
-    "expectedBehavior": "El SELECT inicial encuentra ID = 2. UPDATE cambia Nombre a \"Actualizado\". DELETE elimina ID = 2. La consulta final ordenada muestra solo los registros restantes.",
-    "heavy": false,
-    "errorScenario": false,
-    "recommended": true,
-    "script": "CREATE DATABASE UpdateDeleteIndexSuccess;\nSET DATABASE UpdateDeleteIndexSuccess;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\nINSERT INTO Estudiante VALUES(2, \"Juan\");\nINSERT INTO Estudiante VALUES(3, \"Pedro\");\nINSERT INTO Estudiante VALUES(4, \"Ana\");\n\nCREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;\n\nSELECT * FROM Estudiante WHERE ID = 2;\n\nUPDATE Estudiante SET Nombre = \"Actualizado\" WHERE ID = 2;\n\nSELECT * FROM Estudiante WHERE ID = 2;\n\nDELETE FROM Estudiante WHERE ID = 2;\n\nSELECT * FROM Estudiante WHERE ID = 2;\n\nSELECT * FROM Estudiante ORDER BY ID ASC;",
-    "statementCount": 14
-  },
-  {
-    "id": "errores-insercion",
-    "title": "Errores de inserción",
-    "category": "Error Handling",
-    "sourceFile": "scripts/errors/01_insert_errors.sql",
-    "description": "Valida type mismatch, longitud de VARCHAR, NOT NULL y cantidad incorrecta de valores.",
-    "expectedBehavior": "Las sentencias inválidas deben fallar con mensajes claros del backend.",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": false,
-    "script": "CREATE DATABASE InsertErrors;\nSET DATABASE InsertErrors;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(10) NOT NULL,\n  Nota DOUBLE NULL,\n  FechaNacimiento DATETIME NULL\n);\n\nINSERT INTO Estudiante VALUES(\"uno\", \"Isaac\", 90.5, \"2000-01-01 01:02:00\");\n\nINSERT INTO Estudiante VALUES(1, \"NombreDemasiadoLargo\", 90.5, \"2000-01-01 01:02:00\");\n\nINSERT INTO Estudiante VALUES(1, NULL, 90.5, \"2000-01-01 01:02:00\");\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");",
-    "statementCount": 7
-  },
-  {
-    "id": "errores-consulta",
-    "title": "Errores de consulta",
-    "category": "Error Handling",
-    "sourceFile": "scripts/errors/02_query_errors.sql",
-    "description": "Valida columnas inexistentes, tablas inexistentes y operaciones inválidas.",
-    "expectedBehavior": "Las consultas inválidas deben fallar sin romper el cliente.",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": false,
-    "script": "CREATE DATABASE QueryErrors;\nSET DATABASE QueryErrors;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(20) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\n\nSELECT Edad FROM Estudiante;\n\nSELECT * FROM Estudiante WHERE Edad = 10;\n\nUPDATE Estudiante SET Edad = 20 WHERE ID = 1;\n\nDELETE FROM NoExiste WHERE ID = 1;\n\nDROP TABLE Estudiante;",
-    "statementCount": 9
-  },
-  {
-    "id": "drop-table-no-vacia",
-    "title": "DROP TABLE con tabla no vacía",
-    "category": "Error Handling",
-    "sourceFile": "scripts/errors/03_drop_table_not_empty.sql",
-    "description": "Valida que DROP TABLE falle si la tabla tiene registros.",
-    "expectedBehavior": "DROP TABLE debe fallar mientras existan registros activos en la tabla.",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": false,
-    "script": "  CREATE DATABASE DropError;\nSET DATABASE DropError;\n\nCREATE TABLE Curso AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Curso VALUES(1, \"Bases\");\n\nDROP TABLE Curso;",
-    "statementCount": 5
-  },
-  {
-    "id": "indice-valores-duplicados",
-    "title": "Índice sobre valores duplicados",
-    "category": "Error Handling",
-    "sourceFile": "scripts/errors/04_index_duplicate_values.sql",
-    "description": "Valida que no se cree índice sobre una columna con valores repetidos.",
-    "expectedBehavior": "CREATE INDEX debe fallar si la columna tiene duplicados.",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": false,
-    "script": "CREATE DATABASE IndexDuplicateError;\nSET DATABASE IndexDuplicateError;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\nINSERT INTO Estudiante VALUES(1, \"Juan\");\n\nCREATE INDEX IDX_Estudiante_ID_BST ON Estudiante(ID) OF TYPE BST;",
-    "statementCount": 6
-  },
-  {
-    "id": "insercion-duplicada-indexada",
-    "title": "Inserción duplicada en columna indexada",
-    "category": "Error Handling",
-    "sourceFile": "scripts/errors/05_index_insert_duplicate.sql",
-    "description": "Valida que después de crear un índice no se permitan valores duplicados en esa columna.",
-    "expectedBehavior": "El INSERT duplicado debe fallar después de crear el índice.",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": false,
-    "script": "CREATE DATABASE IndexInsertDuplicateError;\nSET DATABASE IndexInsertDuplicateError;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\nINSERT INTO Estudiante VALUES(2, \"Juan\");\n\nCREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;\n\nINSERT INTO Estudiante VALUES(2, \"Duplicado\");",
-    "statementCount": 7
-  },
-  {
-    "id": "indice-columna-invalida",
-    "title": "Índice sobre columna inválida",
-    "category": "Error Handling",
-    "sourceFile": "scripts/errors/06_index_invalid_column.sql",
-    "description": "Valida error al intentar crear índice sobre una columna inexistente.",
-    "expectedBehavior": "CREATE INDEX debe fallar si la columna no existe.",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": false,
-    "script": "CREATE DATABASE IndexInvalidColumnError;\nSET DATABASE IndexInvalidColumnError;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nCREATE INDEX IDX_Estudiante_Edad ON Estudiante(Edad) OF TYPE BST;",
-    "statementCount": 4
-  },
-  {
-    "id": "integridad-cifrado",
-    "title": "Integridad de almacenamiento cifrado",
-    "category": "Storage",
-    "sourceFile": "scripts/errors/07_encrypted_storage_integrity.sql",
-    "description": "Valida manejo de errores o integridad relacionada con almacenamiento cifrado.",
-    "expectedBehavior": "El backend debe reportar errores controlados cuando corresponda.",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": false,
-    "script": "CREATE DATABASE EncryptionError;\nSET DATABASE EncryptionError;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\nINSERT INTO Estudiante VALUES(2, \"Juan\");\n\nCREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;\n\nINSERT INTO Estudiante VALUES(2, \"Duplicado\");",
-    "statementCount": 7
-  },
-  {
-    "id": "un-indice-por-tabla",
-    "title": "Restricción de un índice por tabla",
-    "category": "Error Handling",
-    "sourceFile": "scripts/errors/08_one_index_per_table.sql",
-    "description": "Valida la regla conservadora del proyecto: una tabla solo puede tener un índice total. El primer índice debe crearse correctamente y el segundo CREATE INDEX debe fallar.",
-    "expectedBehavior": "La ejecución debe fallar en el segundo CREATE INDEX con un mensaje similar a \"Ya existe un indice para esta tabla\".",
-    "heavy": false,
-    "errorScenario": true,
-    "recommended": true,
-    "script": "CREATE DATABASE OneIndexPerTableError;\nSET DATABASE OneIndexPerTableError;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\n\nINSERT INTO Estudiante VALUES(1, \"Isaac\");\nINSERT INTO Estudiante VALUES(2, \"Juan\");\n\nCREATE INDEX IDX_ID ON Estudiante(ID) OF TYPE BST;\n\nCREATE INDEX IDX_NOMBRE ON Estudiante(Nombre) OF TYPE BTREE;",
-    "statementCount": 7
-  },
-    {
-      "id": "benchmark-sin-indice",
-      "title": "Benchmark sin índice",
-      "category": "Performance",
-      "sourceFile": "scripts/benchmarks/01_select_without_index.sql",
-      "description": "Carga 1000 registros y ejecuta 50 consultas SELECT por igualdad sin índice para medir búsqueda secuencial.",
-      "expectedBehavior": "Debe ser la línea base más lenta. La métrica principal es el promedio de SELECT, no el tiempo total del script.",
-      "heavy": true,
-      "errorScenario": false,
-      "recommended": true,
-      "script": "CREATE DATABASE BenchmarkNoIndex;\nSET DATABASE BenchmarkNoIndex;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\nINSERT INTO Estudiante VALUES(1, \"Nombre1\");\nINSERT INTO Estudiante VALUES(2, \"Nombre2\");\nINSERT INTO Estudiante VALUES(3, \"Nombre3\");\nINSERT INTO Estudiante VALUES(4, \"Nombre4\");\nINSERT INTO Estudiante VALUES(5, \"Nombre5\");\nINSERT INTO Estudiante VALUES(6, \"Nombre6\");\nINSERT INTO Estudiante VALUES(7, \"Nombre7\");\nINSERT INTO Estudiante VALUES(8, \"Nombre8\");\nINSERT INTO Estudiante VALUES(9, \"Nombre9\");\nINSERT INTO Estudiante VALUES(10, \"Nombre10\");\nINSERT INTO Estudiante VALUES(11, \"Nombre11\");\nINSERT INTO Estudiante VALUES(12, \"Nombre12\");\nINSERT INTO Estudiante VALUES(13, \"Nombre13\");\nINSERT INTO Estudiante VALUES(14, \"Nombre14\");\nINSERT INTO Estudiante VALUES(15, \"Nombre15\");\nINSERT INTO Estudiante VALUES(16, \"Nombre16\");\nINSERT INTO Estudiante VALUES(17, \"Nombre17\");\nINSERT INTO Estudiante VALUES(18, \"Nombre18\");\nINSERT INTO Estudiante VALUES(19, \"Nombre19\");\nINSERT INTO Estudiante VALUES(20, \"Nombre20\");\nINSERT INTO Estudiante VALUES(21, \"Nombre21\");\nINSERT INTO Estudiante VALUES(22, \"Nombre22\");\nINSERT INTO Estudiante VALUES(23, \"Nombre23\");\nINSERT INTO Estudiante VALUES(24, \"Nombre24\");\nINSERT INTO Estudiante VALUES(25, \"Nombre25\");\nINSERT INTO Estudiante VALUES(26, \"Nombre26\");\nINSERT INTO Estudiante VALUES(27, \"Nombre27\");\nINSERT INTO Estudiante VALUES(28, \"Nombre28\");\nINSERT INTO Estudiante VALUES(29, \"Nombre29\");\nINSERT INTO Estudiante VALUES(30, \"Nombre30\");\nINSERT INTO Estudiante VALUES(31, \"Nombre31\");\nINSERT INTO Estudiante VALUES(32, \"Nombre32\");\nINSERT INTO Estudiante VALUES(33, \"Nombre33\");\nINSERT INTO Estudiante VALUES(34, \"Nombre34\");\nINSERT INTO Estudiante VALUES(35, \"Nombre35\");\nINSERT INTO Estudiante VALUES(36, \"Nombre36\");\nINSERT INTO Estudiante VALUES(37, \"Nombre37\");\nINSERT INTO Estudiante VALUES(38, \"Nombre38\");\nINSERT INTO Estudiante VALUES(39, \"Nombre39\");\nINSERT INTO Estudiante VALUES(40, \"Nombre40\");\nINSERT INTO Estudiante VALUES(41, \"Nombre41\");\nINSERT INTO Estudiante VALUES(42, \"Nombre42\");\nINSERT INTO Estudiante VALUES(43, \"Nombre43\");\nINSERT INTO Estudiante VALUES(44, \"Nombre44\");\nINSERT INTO Estudiante VALUES(45, \"Nombre45\");\nINSERT INTO Estudiante VALUES(46, \"Nombre46\");\nINSERT INTO Estudiante VALUES(47, \"Nombre47\");\nINSERT INTO Estudiante VALUES(48, \"Nombre48\");\nINSERT INTO Estudiante VALUES(49, \"Nombre49\");\nINSERT INTO Estudiante VALUES(50, \"Nombre50\");\nINSERT INTO Estudiante VALUES(51, \"Nombre51\");\nINSERT INTO Estudiante VALUES(52, \"Nombre52\");\nINSERT INTO Estudiante VALUES(53, \"Nombre53\");\nINSERT INTO Estudiante VALUES(54, \"Nombre54\");\nINSERT INTO Estudiante VALUES(55, \"Nombre55\");\nINSERT INTO Estudiante VALUES(56, \"Nombre56\");\nINSERT INTO Estudiante VALUES(57, \"Nombre57\");\nINSERT INTO Estudiante VALUES(58, \"Nombre58\");\nINSERT INTO Estudiante VALUES(59, \"Nombre59\");\nINSERT INTO Estudiante VALUES(60, \"Nombre60\");\nINSERT INTO Estudiante VALUES(61, \"Nombre61\");\nINSERT INTO Estudiante VALUES(62, \"Nombre62\");\nINSERT INTO Estudiante VALUES(63, \"Nombre63\");\nINSERT INTO Estudiante VALUES(64, \"Nombre64\");\nINSERT INTO Estudiante VALUES(65, \"Nombre65\");\nINSERT INTO Estudiante VALUES(66, \"Nombre66\");\nINSERT INTO Estudiante VALUES(67, \"Nombre67\");\nINSERT INTO Estudiante VALUES(68, \"Nombre68\");\nINSERT INTO Estudiante VALUES(69, \"Nombre69\");\nINSERT INTO Estudiante VALUES(70, \"Nombre70\");\nINSERT INTO Estudiante VALUES(71, \"Nombre71\");\nINSERT INTO Estudiante VALUES(72, \"Nombre72\");\nINSERT INTO Estudiante VALUES(73, \"Nombre73\");\nINSERT INTO Estudiante VALUES(74, \"Nombre74\");\nINSERT INTO Estudiante VALUES(75, \"Nombre75\");\nINSERT INTO Estudiante VALUES(76, \"Nombre76\");\nINSERT INTO Estudiante VALUES(77, \"Nombre77\");\nINSERT INTO Estudiante VALUES(78, \"Nombre78\");\nINSERT INTO Estudiante VALUES(79, \"Nombre79\");\nINSERT INTO Estudiante VALUES(80, \"Nombre80\");\nINSERT INTO Estudiante VALUES(81, \"Nombre81\");\nINSERT INTO Estudiante VALUES(82, \"Nombre82\");\nINSERT INTO Estudiante VALUES(83, \"Nombre83\");\nINSERT INTO Estudiante VALUES(84, \"Nombre84\");\nINSERT INTO Estudiante VALUES(85, \"Nombre85\");\nINSERT INTO Estudiante VALUES(86, \"Nombre86\");\nINSERT INTO Estudiante VALUES(87, \"Nombre87\");\nINSERT INTO Estudiante VALUES(88, \"Nombre88\");\nINSERT INTO Estudiante VALUES(89, \"Nombre89\");\nINSERT INTO Estudiante VALUES(90, \"Nombre90\");\nINSERT INTO Estudiante VALUES(91, \"Nombre91\");\nINSERT INTO Estudiante VALUES(92, \"Nombre92\");\nINSERT INTO Estudiante VALUES(93, \"Nombre93\");\nINSERT INTO Estudiante VALUES(94, \"Nombre94\");\nINSERT INTO Estudiante VALUES(95, \"Nombre95\");\nINSERT INTO Estudiante VALUES(96, \"Nombre96\");\nINSERT INTO Estudiante VALUES(97, \"Nombre97\");\nINSERT INTO Estudiante VALUES(98, \"Nombre98\");\nINSERT INTO Estudiante VALUES(99, \"Nombre99\");\nINSERT INTO Estudiante VALUES(100, \"Nombre100\");\nINSERT INTO Estudiante VALUES(101, \"Nombre101\");\nINSERT INTO Estudiante VALUES(102, \"Nombre102\");\nINSERT INTO Estudiante VALUES(103, \"Nombre103\");\nINSERT INTO Estudiante VALUES(104, \"Nombre104\");\nINSERT INTO Estudiante VALUES(105, \"Nombre105\");\nINSERT INTO Estudiante VALUES(106, \"Nombre106\");\nINSERT INTO Estudiante VALUES(107, \"Nombre107\");\nINSERT INTO Estudiante VALUES(108, \"Nombre108\");\nINSERT INTO Estudiante VALUES(109, \"Nombre109\");\nINSERT INTO Estudiante VALUES(110, \"Nombre110\");\nINSERT INTO Estudiante VALUES(111, \"Nombre111\");\nINSERT INTO Estudiante VALUES(112, \"Nombre112\");\nINSERT INTO Estudiante VALUES(113, \"Nombre113\");\nINSERT INTO Estudiante VALUES(114, \"Nombre114\");\nINSERT INTO Estudiante VALUES(115, \"Nombre115\");\nINSERT INTO Estudiante VALUES(116, \"Nombre116\");\nINSERT INTO Estudiante VALUES(117, \"Nombre117\");\nINSERT INTO Estudiante VALUES(118, \"Nombre118\");\nINSERT INTO Estudiante VALUES(119, \"Nombre119\");\nINSERT INTO Estudiante VALUES(120, \"Nombre120\");\nINSERT INTO Estudiante VALUES(121, \"Nombre121\");\nINSERT INTO Estudiante VALUES(122, \"Nombre122\");\nINSERT INTO Estudiante VALUES(123, \"Nombre123\");\nINSERT INTO Estudiante VALUES(124, \"Nombre124\");\nINSERT INTO Estudiante VALUES(125, \"Nombre125\");\nINSERT INTO Estudiante VALUES(126, \"Nombre126\");\nINSERT INTO Estudiante VALUES(127, \"Nombre127\");\nINSERT INTO Estudiante VALUES(128, \"Nombre128\");\nINSERT INTO Estudiante VALUES(129, \"Nombre129\");\nINSERT INTO Estudiante VALUES(130, \"Nombre130\");\nINSERT INTO Estudiante VALUES(131, \"Nombre131\");\nINSERT INTO Estudiante VALUES(132, \"Nombre132\");\nINSERT INTO Estudiante VALUES(133, \"Nombre133\");\nINSERT INTO Estudiante VALUES(134, \"Nombre134\");\nINSERT INTO Estudiante VALUES(135, \"Nombre135\");\nINSERT INTO Estudiante VALUES(136, \"Nombre136\");\nINSERT INTO Estudiante VALUES(137, \"Nombre137\");\nINSERT INTO Estudiante VALUES(138, \"Nombre138\");\nINSERT INTO Estudiante VALUES(139, \"Nombre139\");\nINSERT INTO Estudiante VALUES(140, \"Nombre140\");\nINSERT INTO Estudiante VALUES(141, \"Nombre141\");\nINSERT INTO Estudiante VALUES(142, \"Nombre142\");\nINSERT INTO Estudiante VALUES(143, \"Nombre143\");\nINSERT INTO Estudiante VALUES(144, \"Nombre144\");\nINSERT INTO Estudiante VALUES(145, \"Nombre145\");\nINSERT INTO Estudiante VALUES(146, \"Nombre146\");\nINSERT INTO Estudiante VALUES(147, \"Nombre147\");\nINSERT INTO Estudiante VALUES(148, \"Nombre148\");\nINSERT INTO Estudiante VALUES(149, \"Nombre149\");\nINSERT INTO Estudiante VALUES(150, \"Nombre150\");\nINSERT INTO Estudiante VALUES(151, \"Nombre151\");\nINSERT INTO Estudiante VALUES(152, \"Nombre152\");\nINSERT INTO Estudiante VALUES(153, \"Nombre153\");\nINSERT INTO Estudiante VALUES(154, \"Nombre154\");\nINSERT INTO Estudiante VALUES(155, \"Nombre155\");\nINSERT INTO Estudiante VALUES(156, \"Nombre156\");\nINSERT INTO Estudiante VALUES(157, \"Nombre157\");\nINSERT INTO Estudiante VALUES(158, \"Nombre158\");\nINSERT INTO Estudiante VALUES(159, \"Nombre159\");\nINSERT INTO Estudiante VALUES(160, \"Nombre160\");\nINSERT INTO Estudiante VALUES(161, \"Nombre161\");\nINSERT INTO Estudiante VALUES(162, \"Nombre162\");\nINSERT INTO Estudiante VALUES(163, \"Nombre163\");\nINSERT INTO Estudiante VALUES(164, \"Nombre164\");\nINSERT INTO Estudiante VALUES(165, \"Nombre165\");\nINSERT INTO Estudiante VALUES(166, \"Nombre166\");\nINSERT INTO Estudiante VALUES(167, \"Nombre167\");\nINSERT INTO Estudiante VALUES(168, \"Nombre168\");\nINSERT INTO Estudiante VALUES(169, \"Nombre169\");\nINSERT INTO Estudiante VALUES(170, \"Nombre170\");\nINSERT INTO Estudiante VALUES(171, \"Nombre171\");\nINSERT INTO Estudiante VALUES(172, \"Nombre172\");\nINSERT INTO Estudiante VALUES(173, \"Nombre173\");\nINSERT INTO Estudiante VALUES(174, \"Nombre174\");\nINSERT INTO Estudiante VALUES(175, \"Nombre175\");\nINSERT INTO Estudiante VALUES(176, \"Nombre176\");\nINSERT INTO Estudiante VALUES(177, \"Nombre177\");\nINSERT INTO Estudiante VALUES(178, \"Nombre178\");\nINSERT INTO Estudiante VALUES(179, \"Nombre179\");\nINSERT INTO Estudiante VALUES(180, \"Nombre180\");\nINSERT INTO Estudiante VALUES(181, \"Nombre181\");\nINSERT INTO Estudiante VALUES(182, \"Nombre182\");\nINSERT INTO Estudiante VALUES(183, \"Nombre183\");\nINSERT INTO Estudiante VALUES(184, \"Nombre184\");\nINSERT INTO Estudiante VALUES(185, \"Nombre185\");\nINSERT INTO Estudiante VALUES(186, \"Nombre186\");\nINSERT INTO Estudiante VALUES(187, \"Nombre187\");\nINSERT INTO Estudiante VALUES(188, \"Nombre188\");\nINSERT INTO Estudiante VALUES(189, \"Nombre189\");\nINSERT INTO Estudiante VALUES(190, \"Nombre190\");\nINSERT INTO Estudiante VALUES(191, \"Nombre191\");\nINSERT INTO Estudiante VALUES(192, \"Nombre192\");\nINSERT INTO Estudiante VALUES(193, \"Nombre193\");\nINSERT INTO Estudiante VALUES(194, \"Nombre194\");\nINSERT INTO Estudiante VALUES(195, \"Nombre195\");\nINSERT INTO Estudiante VALUES(196, \"Nombre196\");\nINSERT INTO Estudiante VALUES(197, \"Nombre197\");\nINSERT INTO Estudiante VALUES(198, \"Nombre198\");\nINSERT INTO Estudiante VALUES(199, \"Nombre199\");\nINSERT INTO Estudiante VALUES(200, \"Nombre200\");\nINSERT INTO Estudiante VALUES(201, \"Nombre201\");\nINSERT INTO Estudiante VALUES(202, \"Nombre202\");\nINSERT INTO Estudiante VALUES(203, \"Nombre203\");\nINSERT INTO Estudiante VALUES(204, \"Nombre204\");\nINSERT INTO Estudiante VALUES(205, \"Nombre205\");\nINSERT INTO Estudiante VALUES(206, \"Nombre206\");\nINSERT INTO Estudiante VALUES(207, \"Nombre207\");\nINSERT INTO Estudiante VALUES(208, \"Nombre208\");\nINSERT INTO Estudiante VALUES(209, \"Nombre209\");\nINSERT INTO Estudiante VALUES(210, \"Nombre210\");\nINSERT INTO Estudiante VALUES(211, \"Nombre211\");\nINSERT INTO Estudiante VALUES(212, \"Nombre212\");\nINSERT INTO Estudiante VALUES(213, \"Nombre213\");\nINSERT INTO Estudiante VALUES(214, \"Nombre214\");\nINSERT INTO Estudiante VALUES(215, \"Nombre215\");\nINSERT INTO Estudiante VALUES(216, \"Nombre216\");\nINSERT INTO Estudiante VALUES(217, \"Nombre217\");\nINSERT INTO Estudiante VALUES(218, \"Nombre218\");\nINSERT INTO Estudiante VALUES(219, \"Nombre219\");\nINSERT INTO Estudiante VALUES(220, \"Nombre220\");\nINSERT INTO Estudiante VALUES(221, \"Nombre221\");\nINSERT INTO Estudiante VALUES(222, \"Nombre222\");\nINSERT INTO Estudiante VALUES(223, \"Nombre223\");\nINSERT INTO Estudiante VALUES(224, \"Nombre224\");\nINSERT INTO Estudiante VALUES(225, \"Nombre225\");\nINSERT INTO Estudiante VALUES(226, \"Nombre226\");\nINSERT INTO Estudiante VALUES(227, \"Nombre227\");\nINSERT INTO Estudiante VALUES(228, \"Nombre228\");\nINSERT INTO Estudiante VALUES(229, \"Nombre229\");\nINSERT INTO Estudiante VALUES(230, \"Nombre230\");\nINSERT INTO Estudiante VALUES(231, \"Nombre231\");\nINSERT INTO Estudiante VALUES(232, \"Nombre232\");\nINSERT INTO Estudiante VALUES(233, \"Nombre233\");\nINSERT INTO Estudiante VALUES(234, \"Nombre234\");\nINSERT INTO Estudiante VALUES(235, \"Nombre235\");\nINSERT INTO Estudiante VALUES(236, \"Nombre236\");\nINSERT INTO Estudiante VALUES(237, \"Nombre237\");\nINSERT INTO Estudiante VALUES(238, \"Nombre238\");\nINSERT INTO Estudiante VALUES(239, \"Nombre239\");\nINSERT INTO Estudiante VALUES(240, \"Nombre240\");\nINSERT INTO Estudiante VALUES(241, \"Nombre241\");\nINSERT INTO Estudiante VALUES(242, \"Nombre242\");\nINSERT INTO Estudiante VALUES(243, \"Nombre243\");\nINSERT INTO Estudiante VALUES(244, \"Nombre244\");\nINSERT INTO Estudiante VALUES(245, \"Nombre245\");\nINSERT INTO Estudiante VALUES(246, \"Nombre246\");\nINSERT INTO Estudiante VALUES(247, \"Nombre247\");\nINSERT INTO Estudiante VALUES(248, \"Nombre248\");\nINSERT INTO Estudiante VALUES(249, \"Nombre249\");\nINSERT INTO Estudiante VALUES(250, \"Nombre250\");\nINSERT INTO Estudiante VALUES(251, \"Nombre251\");\nINSERT INTO Estudiante VALUES(252, \"Nombre252\");\nINSERT INTO Estudiante VALUES(253, \"Nombre253\");\nINSERT INTO Estudiante VALUES(254, \"Nombre254\");\nINSERT INTO Estudiante VALUES(255, \"Nombre255\");\nINSERT INTO Estudiante VALUES(256, \"Nombre256\");\nINSERT INTO Estudiante VALUES(257, \"Nombre257\");\nINSERT INTO Estudiante VALUES(258, \"Nombre258\");\nINSERT INTO Estudiante VALUES(259, \"Nombre259\");\nINSERT INTO Estudiante VALUES(260, \"Nombre260\");\nINSERT INTO Estudiante VALUES(261, \"Nombre261\");\nINSERT INTO Estudiante VALUES(262, \"Nombre262\");\nINSERT INTO Estudiante VALUES(263, \"Nombre263\");\nINSERT INTO Estudiante VALUES(264, \"Nombre264\");\nINSERT INTO Estudiante VALUES(265, \"Nombre265\");\nINSERT INTO Estudiante VALUES(266, \"Nombre266\");\nINSERT INTO Estudiante VALUES(267, \"Nombre267\");\nINSERT INTO Estudiante VALUES(268, \"Nombre268\");\nINSERT INTO Estudiante VALUES(269, \"Nombre269\");\nINSERT INTO Estudiante VALUES(270, \"Nombre270\");\nINSERT INTO Estudiante VALUES(271, \"Nombre271\");\nINSERT INTO Estudiante VALUES(272, \"Nombre272\");\nINSERT INTO Estudiante VALUES(273, \"Nombre273\");\nINSERT INTO Estudiante VALUES(274, \"Nombre274\");\nINSERT INTO Estudiante VALUES(275, \"Nombre275\");\nINSERT INTO Estudiante VALUES(276, \"Nombre276\");\nINSERT INTO Estudiante VALUES(277, \"Nombre277\");\nINSERT INTO Estudiante VALUES(278, \"Nombre278\");\nINSERT INTO Estudiante VALUES(279, \"Nombre279\");\nINSERT INTO Estudiante VALUES(280, \"Nombre280\");\nINSERT INTO Estudiante VALUES(281, \"Nombre281\");\nINSERT INTO Estudiante VALUES(282, \"Nombre282\");\nINSERT INTO Estudiante VALUES(283, \"Nombre283\");\nINSERT INTO Estudiante VALUES(284, \"Nombre284\");\nINSERT INTO Estudiante VALUES(285, \"Nombre285\");\nINSERT INTO Estudiante VALUES(286, \"Nombre286\");\nINSERT INTO Estudiante VALUES(287, \"Nombre287\");\nINSERT INTO Estudiante VALUES(288, \"Nombre288\");\nINSERT INTO Estudiante VALUES(289, \"Nombre289\");\nINSERT INTO Estudiante VALUES(290, \"Nombre290\");\nINSERT INTO Estudiante VALUES(291, \"Nombre291\");\nINSERT INTO Estudiante VALUES(292, \"Nombre292\");\nINSERT INTO Estudiante VALUES(293, \"Nombre293\");\nINSERT INTO Estudiante VALUES(294, \"Nombre294\");\nINSERT INTO Estudiante VALUES(295, \"Nombre295\");\nINSERT INTO Estudiante VALUES(296, \"Nombre296\");\nINSERT INTO Estudiante VALUES(297, \"Nombre297\");\nINSERT INTO Estudiante VALUES(298, \"Nombre298\");\nINSERT INTO Estudiante VALUES(299, \"Nombre299\");\nINSERT INTO Estudiante VALUES(300, \"Nombre300\");\nINSERT INTO Estudiante VALUES(301, \"Nombre301\");\nINSERT INTO Estudiante VALUES(302, \"Nombre302\");\nINSERT INTO Estudiante VALUES(303, \"Nombre303\");\nINSERT INTO Estudiante VALUES(304, \"Nombre304\");\nINSERT INTO Estudiante VALUES(305, \"Nombre305\");\nINSERT INTO Estudiante VALUES(306, \"Nombre306\");\nINSERT INTO Estudiante VALUES(307, \"Nombre307\");\nINSERT INTO Estudiante VALUES(308, \"Nombre308\");\nINSERT INTO Estudiante VALUES(309, \"Nombre309\");\nINSERT INTO Estudiante VALUES(310, \"Nombre310\");\nINSERT INTO Estudiante VALUES(311, \"Nombre311\");\nINSERT INTO Estudiante VALUES(312, \"Nombre312\");\nINSERT INTO Estudiante VALUES(313, \"Nombre313\");\nINSERT INTO Estudiante VALUES(314, \"Nombre314\");\nINSERT INTO Estudiante VALUES(315, \"Nombre315\");\nINSERT INTO Estudiante VALUES(316, \"Nombre316\");\nINSERT INTO Estudiante VALUES(317, \"Nombre317\");\nINSERT INTO Estudiante VALUES(318, \"Nombre318\");\nINSERT INTO Estudiante VALUES(319, \"Nombre319\");\nINSERT INTO Estudiante VALUES(320, \"Nombre320\");\nINSERT INTO Estudiante VALUES(321, \"Nombre321\");\nINSERT INTO Estudiante VALUES(322, \"Nombre322\");\nINSERT INTO Estudiante VALUES(323, \"Nombre323\");\nINSERT INTO Estudiante VALUES(324, \"Nombre324\");\nINSERT INTO Estudiante VALUES(325, \"Nombre325\");\nINSERT INTO Estudiante VALUES(326, \"Nombre326\");\nINSERT INTO Estudiante VALUES(327, \"Nombre327\");\nINSERT INTO Estudiante VALUES(328, \"Nombre328\");\nINSERT INTO Estudiante VALUES(329, \"Nombre329\");\nINSERT INTO Estudiante VALUES(330, \"Nombre330\");\nINSERT INTO Estudiante VALUES(331, \"Nombre331\");\nINSERT INTO Estudiante VALUES(332, \"Nombre332\");\nINSERT INTO Estudiante VALUES(333, \"Nombre333\");\nINSERT INTO Estudiante VALUES(334, \"Nombre334\");\nINSERT INTO Estudiante VALUES(335, \"Nombre335\");\nINSERT INTO Estudiante VALUES(336, \"Nombre336\");\nINSERT INTO Estudiante VALUES(337, \"Nombre337\");\nINSERT INTO Estudiante VALUES(338, \"Nombre338\");\nINSERT INTO Estudiante VALUES(339, \"Nombre339\");\nINSERT INTO Estudiante VALUES(340, \"Nombre340\");\nINSERT INTO Estudiante VALUES(341, \"Nombre341\");\nINSERT INTO Estudiante VALUES(342, \"Nombre342\");\nINSERT INTO Estudiante VALUES(343, \"Nombre343\");\nINSERT INTO Estudiante VALUES(344, \"Nombre344\");\nINSERT INTO Estudiante VALUES(345, \"Nombre345\");\nINSERT INTO Estudiante VALUES(346, \"Nombre346\");\nINSERT INTO Estudiante VALUES(347, \"Nombre347\");\nINSERT INTO Estudiante VALUES(348, \"Nombre348\");\nINSERT INTO Estudiante VALUES(349, \"Nombre349\");\nINSERT INTO Estudiante VALUES(350, \"Nombre350\");\nINSERT INTO Estudiante VALUES(351, \"Nombre351\");\nINSERT INTO Estudiante VALUES(352, \"Nombre352\");\nINSERT INTO Estudiante VALUES(353, \"Nombre353\");\nINSERT INTO Estudiante VALUES(354, \"Nombre354\");\nINSERT INTO Estudiante VALUES(355, \"Nombre355\");\nINSERT INTO Estudiante VALUES(356, \"Nombre356\");\nINSERT INTO Estudiante VALUES(357, \"Nombre357\");\nINSERT INTO Estudiante VALUES(358, \"Nombre358\");\nINSERT INTO Estudiante VALUES(359, \"Nombre359\");\nINSERT INTO Estudiante VALUES(360, \"Nombre360\");\nINSERT INTO Estudiante VALUES(361, \"Nombre361\");\nINSERT INTO Estudiante VALUES(362, \"Nombre362\");\nINSERT INTO Estudiante VALUES(363, \"Nombre363\");\nINSERT INTO Estudiante VALUES(364, \"Nombre364\");\nINSERT INTO Estudiante VALUES(365, \"Nombre365\");\nINSERT INTO Estudiante VALUES(366, \"Nombre366\");\nINSERT INTO Estudiante VALUES(367, \"Nombre367\");\nINSERT INTO Estudiante VALUES(368, \"Nombre368\");\nINSERT INTO Estudiante VALUES(369, \"Nombre369\");\nINSERT INTO Estudiante VALUES(370, \"Nombre370\");\nINSERT INTO Estudiante VALUES(371, \"Nombre371\");\nINSERT INTO Estudiante VALUES(372, \"Nombre372\");\nINSERT INTO Estudiante VALUES(373, \"Nombre373\");\nINSERT INTO Estudiante VALUES(374, \"Nombre374\");\nINSERT INTO Estudiante VALUES(375, \"Nombre375\");\nINSERT INTO Estudiante VALUES(376, \"Nombre376\");\nINSERT INTO Estudiante VALUES(377, \"Nombre377\");\nINSERT INTO Estudiante VALUES(378, \"Nombre378\");\nINSERT INTO Estudiante VALUES(379, \"Nombre379\");\nINSERT INTO Estudiante VALUES(380, \"Nombre380\");\nINSERT INTO Estudiante VALUES(381, \"Nombre381\");\nINSERT INTO Estudiante VALUES(382, \"Nombre382\");\nINSERT INTO Estudiante VALUES(383, \"Nombre383\");\nINSERT INTO Estudiante VALUES(384, \"Nombre384\");\nINSERT INTO Estudiante VALUES(385, \"Nombre385\");\nINSERT INTO Estudiante VALUES(386, \"Nombre386\");\nINSERT INTO Estudiante VALUES(387, \"Nombre387\");\nINSERT INTO Estudiante VALUES(388, \"Nombre388\");\nINSERT INTO Estudiante VALUES(389, \"Nombre389\");\nINSERT INTO Estudiante VALUES(390, \"Nombre390\");\nINSERT INTO Estudiante VALUES(391, \"Nombre391\");\nINSERT INTO Estudiante VALUES(392, \"Nombre392\");\nINSERT INTO Estudiante VALUES(393, \"Nombre393\");\nINSERT INTO Estudiante VALUES(394, \"Nombre394\");\nINSERT INTO Estudiante VALUES(395, \"Nombre395\");\nINSERT INTO Estudiante VALUES(396, \"Nombre396\");\nINSERT INTO Estudiante VALUES(397, \"Nombre397\");\nINSERT INTO Estudiante VALUES(398, \"Nombre398\");\nINSERT INTO Estudiante VALUES(399, \"Nombre399\");\nINSERT INTO Estudiante VALUES(400, \"Nombre400\");\nINSERT INTO Estudiante VALUES(401, \"Nombre401\");\nINSERT INTO Estudiante VALUES(402, \"Nombre402\");\nINSERT INTO Estudiante VALUES(403, \"Nombre403\");\nINSERT INTO Estudiante VALUES(404, \"Nombre404\");\nINSERT INTO Estudiante VALUES(405, \"Nombre405\");\nINSERT INTO Estudiante VALUES(406, \"Nombre406\");\nINSERT INTO Estudiante VALUES(407, \"Nombre407\");\nINSERT INTO Estudiante VALUES(408, \"Nombre408\");\nINSERT INTO Estudiante VALUES(409, \"Nombre409\");\nINSERT INTO Estudiante VALUES(410, \"Nombre410\");\nINSERT INTO Estudiante VALUES(411, \"Nombre411\");\nINSERT INTO Estudiante VALUES(412, \"Nombre412\");\nINSERT INTO Estudiante VALUES(413, \"Nombre413\");\nINSERT INTO Estudiante VALUES(414, \"Nombre414\");\nINSERT INTO Estudiante VALUES(415, \"Nombre415\");\nINSERT INTO Estudiante VALUES(416, \"Nombre416\");\nINSERT INTO Estudiante VALUES(417, \"Nombre417\");\nINSERT INTO Estudiante VALUES(418, \"Nombre418\");\nINSERT INTO Estudiante VALUES(419, \"Nombre419\");\nINSERT INTO Estudiante VALUES(420, \"Nombre420\");\nINSERT INTO Estudiante VALUES(421, \"Nombre421\");\nINSERT INTO Estudiante VALUES(422, \"Nombre422\");\nINSERT INTO Estudiante VALUES(423, \"Nombre423\");\nINSERT INTO Estudiante VALUES(424, \"Nombre424\");\nINSERT INTO Estudiante VALUES(425, \"Nombre425\");\nINSERT INTO Estudiante VALUES(426, \"Nombre426\");\nINSERT INTO Estudiante VALUES(427, \"Nombre427\");\nINSERT INTO Estudiante VALUES(428, \"Nombre428\");\nINSERT INTO Estudiante VALUES(429, \"Nombre429\");\nINSERT INTO Estudiante VALUES(430, \"Nombre430\");\nINSERT INTO Estudiante VALUES(431, \"Nombre431\");\nINSERT INTO Estudiante VALUES(432, \"Nombre432\");\nINSERT INTO Estudiante VALUES(433, \"Nombre433\");\nINSERT INTO Estudiante VALUES(434, \"Nombre434\");\nINSERT INTO Estudiante VALUES(435, \"Nombre435\");\nINSERT INTO Estudiante VALUES(436, \"Nombre436\");\nINSERT INTO Estudiante VALUES(437, \"Nombre437\");\nINSERT INTO Estudiante VALUES(438, \"Nombre438\");\nINSERT INTO Estudiante VALUES(439, \"Nombre439\");\nINSERT INTO Estudiante VALUES(440, \"Nombre440\");\nINSERT INTO Estudiante VALUES(441, \"Nombre441\");\nINSERT INTO Estudiante VALUES(442, \"Nombre442\");\nINSERT INTO Estudiante VALUES(443, \"Nombre443\");\nINSERT INTO Estudiante VALUES(444, \"Nombre444\");\nINSERT INTO Estudiante VALUES(445, \"Nombre445\");\nINSERT INTO Estudiante VALUES(446, \"Nombre446\");\nINSERT INTO Estudiante VALUES(447, \"Nombre447\");\nINSERT INTO Estudiante VALUES(448, \"Nombre448\");\nINSERT INTO Estudiante VALUES(449, \"Nombre449\");\nINSERT INTO Estudiante VALUES(450, \"Nombre450\");\nINSERT INTO Estudiante VALUES(451, \"Nombre451\");\nINSERT INTO Estudiante VALUES(452, \"Nombre452\");\nINSERT INTO Estudiante VALUES(453, \"Nombre453\");\nINSERT INTO Estudiante VALUES(454, \"Nombre454\");\nINSERT INTO Estudiante VALUES(455, \"Nombre455\");\nINSERT INTO Estudiante VALUES(456, \"Nombre456\");\nINSERT INTO Estudiante VALUES(457, \"Nombre457\");\nINSERT INTO Estudiante VALUES(458, \"Nombre458\");\nINSERT INTO Estudiante VALUES(459, \"Nombre459\");\nINSERT INTO Estudiante VALUES(460, \"Nombre460\");\nINSERT INTO Estudiante VALUES(461, \"Nombre461\");\nINSERT INTO Estudiante VALUES(462, \"Nombre462\");\nINSERT INTO Estudiante VALUES(463, \"Nombre463\");\nINSERT INTO Estudiante VALUES(464, \"Nombre464\");\nINSERT INTO Estudiante VALUES(465, \"Nombre465\");\nINSERT INTO Estudiante VALUES(466, \"Nombre466\");\nINSERT INTO Estudiante VALUES(467, \"Nombre467\");\nINSERT INTO Estudiante VALUES(468, \"Nombre468\");\nINSERT INTO Estudiante VALUES(469, \"Nombre469\");\nINSERT INTO Estudiante VALUES(470, \"Nombre470\");\nINSERT INTO Estudiante VALUES(471, \"Nombre471\");\nINSERT INTO Estudiante VALUES(472, \"Nombre472\");\nINSERT INTO Estudiante VALUES(473, \"Nombre473\");\nINSERT INTO Estudiante VALUES(474, \"Nombre474\");\nINSERT INTO Estudiante VALUES(475, \"Nombre475\");\nINSERT INTO Estudiante VALUES(476, \"Nombre476\");\nINSERT INTO Estudiante VALUES(477, \"Nombre477\");\nINSERT INTO Estudiante VALUES(478, \"Nombre478\");\nINSERT INTO Estudiante VALUES(479, \"Nombre479\");\nINSERT INTO Estudiante VALUES(480, \"Nombre480\");\nINSERT INTO Estudiante VALUES(481, \"Nombre481\");\nINSERT INTO Estudiante VALUES(482, \"Nombre482\");\nINSERT INTO Estudiante VALUES(483, \"Nombre483\");\nINSERT INTO Estudiante VALUES(484, \"Nombre484\");\nINSERT INTO Estudiante VALUES(485, \"Nombre485\");\nINSERT INTO Estudiante VALUES(486, \"Nombre486\");\nINSERT INTO Estudiante VALUES(487, \"Nombre487\");\nINSERT INTO Estudiante VALUES(488, \"Nombre488\");\nINSERT INTO Estudiante VALUES(489, \"Nombre489\");\nINSERT INTO Estudiante VALUES(490, \"Nombre490\");\nINSERT INTO Estudiante VALUES(491, \"Nombre491\");\nINSERT INTO Estudiante VALUES(492, \"Nombre492\");\nINSERT INTO Estudiante VALUES(493, \"Nombre493\");\nINSERT INTO Estudiante VALUES(494, \"Nombre494\");\nINSERT INTO Estudiante VALUES(495, \"Nombre495\");\nINSERT INTO Estudiante VALUES(496, \"Nombre496\");\nINSERT INTO Estudiante VALUES(497, \"Nombre497\");\nINSERT INTO Estudiante VALUES(498, \"Nombre498\");\nINSERT INTO Estudiante VALUES(499, \"Nombre499\");\nINSERT INTO Estudiante VALUES(500, \"Nombre500\");\nINSERT INTO Estudiante VALUES(501, \"Nombre501\");\nINSERT INTO Estudiante VALUES(502, \"Nombre502\");\nINSERT INTO Estudiante VALUES(503, \"Nombre503\");\nINSERT INTO Estudiante VALUES(504, \"Nombre504\");\nINSERT INTO Estudiante VALUES(505, \"Nombre505\");\nINSERT INTO Estudiante VALUES(506, \"Nombre506\");\nINSERT INTO Estudiante VALUES(507, \"Nombre507\");\nINSERT INTO Estudiante VALUES(508, \"Nombre508\");\nINSERT INTO Estudiante VALUES(509, \"Nombre509\");\nINSERT INTO Estudiante VALUES(510, \"Nombre510\");\nINSERT INTO Estudiante VALUES(511, \"Nombre511\");\nINSERT INTO Estudiante VALUES(512, \"Nombre512\");\nINSERT INTO Estudiante VALUES(513, \"Nombre513\");\nINSERT INTO Estudiante VALUES(514, \"Nombre514\");\nINSERT INTO Estudiante VALUES(515, \"Nombre515\");\nINSERT INTO Estudiante VALUES(516, \"Nombre516\");\nINSERT INTO Estudiante VALUES(517, \"Nombre517\");\nINSERT INTO Estudiante VALUES(518, \"Nombre518\");\nINSERT INTO Estudiante VALUES(519, \"Nombre519\");\nINSERT INTO Estudiante VALUES(520, \"Nombre520\");\nINSERT INTO Estudiante VALUES(521, \"Nombre521\");\nINSERT INTO Estudiante VALUES(522, \"Nombre522\");\nINSERT INTO Estudiante VALUES(523, \"Nombre523\");\nINSERT INTO Estudiante VALUES(524, \"Nombre524\");\nINSERT INTO Estudiante VALUES(525, \"Nombre525\");\nINSERT INTO Estudiante VALUES(526, \"Nombre526\");\nINSERT INTO Estudiante VALUES(527, \"Nombre527\");\nINSERT INTO Estudiante VALUES(528, \"Nombre528\");\nINSERT INTO Estudiante VALUES(529, \"Nombre529\");\nINSERT INTO Estudiante VALUES(530, \"Nombre530\");\nINSERT INTO Estudiante VALUES(531, \"Nombre531\");\nINSERT INTO Estudiante VALUES(532, \"Nombre532\");\nINSERT INTO Estudiante VALUES(533, \"Nombre533\");\nINSERT INTO Estudiante VALUES(534, \"Nombre534\");\nINSERT INTO Estudiante VALUES(535, \"Nombre535\");\nINSERT INTO Estudiante VALUES(536, \"Nombre536\");\nINSERT INTO Estudiante VALUES(537, \"Nombre537\");\nINSERT INTO Estudiante VALUES(538, \"Nombre538\");\nINSERT INTO Estudiante VALUES(539, \"Nombre539\");\nINSERT INTO Estudiante VALUES(540, \"Nombre540\");\nINSERT INTO Estudiante VALUES(541, \"Nombre541\");\nINSERT INTO Estudiante VALUES(542, \"Nombre542\");\nINSERT INTO Estudiante VALUES(543, \"Nombre543\");\nINSERT INTO Estudiante VALUES(544, \"Nombre544\");\nINSERT INTO Estudiante VALUES(545, \"Nombre545\");\nINSERT INTO Estudiante VALUES(546, \"Nombre546\");\nINSERT INTO Estudiante VALUES(547, \"Nombre547\");\nINSERT INTO Estudiante VALUES(548, \"Nombre548\");\nINSERT INTO Estudiante VALUES(549, \"Nombre549\");\nINSERT INTO Estudiante VALUES(550, \"Nombre550\");\nINSERT INTO Estudiante VALUES(551, \"Nombre551\");\nINSERT INTO Estudiante VALUES(552, \"Nombre552\");\nINSERT INTO Estudiante VALUES(553, \"Nombre553\");\nINSERT INTO Estudiante VALUES(554, \"Nombre554\");\nINSERT INTO Estudiante VALUES(555, \"Nombre555\");\nINSERT INTO Estudiante VALUES(556, \"Nombre556\");\nINSERT INTO Estudiante VALUES(557, \"Nombre557\");\nINSERT INTO Estudiante VALUES(558, \"Nombre558\");\nINSERT INTO Estudiante VALUES(559, \"Nombre559\");\nINSERT INTO Estudiante VALUES(560, \"Nombre560\");\nINSERT INTO Estudiante VALUES(561, \"Nombre561\");\nINSERT INTO Estudiante VALUES(562, \"Nombre562\");\nINSERT INTO Estudiante VALUES(563, \"Nombre563\");\nINSERT INTO Estudiante VALUES(564, \"Nombre564\");\nINSERT INTO Estudiante VALUES(565, \"Nombre565\");\nINSERT INTO Estudiante VALUES(566, \"Nombre566\");\nINSERT INTO Estudiante VALUES(567, \"Nombre567\");\nINSERT INTO Estudiante VALUES(568, \"Nombre568\");\nINSERT INTO Estudiante VALUES(569, \"Nombre569\");\nINSERT INTO Estudiante VALUES(570, \"Nombre570\");\nINSERT INTO Estudiante VALUES(571, \"Nombre571\");\nINSERT INTO Estudiante VALUES(572, \"Nombre572\");\nINSERT INTO Estudiante VALUES(573, \"Nombre573\");\nINSERT INTO Estudiante VALUES(574, \"Nombre574\");\nINSERT INTO Estudiante VALUES(575, \"Nombre575\");\nINSERT INTO Estudiante VALUES(576, \"Nombre576\");\nINSERT INTO Estudiante VALUES(577, \"Nombre577\");\nINSERT INTO Estudiante VALUES(578, \"Nombre578\");\nINSERT INTO Estudiante VALUES(579, \"Nombre579\");\nINSERT INTO Estudiante VALUES(580, \"Nombre580\");\nINSERT INTO Estudiante VALUES(581, \"Nombre581\");\nINSERT INTO Estudiante VALUES(582, \"Nombre582\");\nINSERT INTO Estudiante VALUES(583, \"Nombre583\");\nINSERT INTO Estudiante VALUES(584, \"Nombre584\");\nINSERT INTO Estudiante VALUES(585, \"Nombre585\");\nINSERT INTO Estudiante VALUES(586, \"Nombre586\");\nINSERT INTO Estudiante VALUES(587, \"Nombre587\");\nINSERT INTO Estudiante VALUES(588, \"Nombre588\");\nINSERT INTO Estudiante VALUES(589, \"Nombre589\");\nINSERT INTO Estudiante VALUES(590, \"Nombre590\");\nINSERT INTO Estudiante VALUES(591, \"Nombre591\");\nINSERT INTO Estudiante VALUES(592, \"Nombre592\");\nINSERT INTO Estudiante VALUES(593, \"Nombre593\");\nINSERT INTO Estudiante VALUES(594, \"Nombre594\");\nINSERT INTO Estudiante VALUES(595, \"Nombre595\");\nINSERT INTO Estudiante VALUES(596, \"Nombre596\");\nINSERT INTO Estudiante VALUES(597, \"Nombre597\");\nINSERT INTO Estudiante VALUES(598, \"Nombre598\");\nINSERT INTO Estudiante VALUES(599, \"Nombre599\");\nINSERT INTO Estudiante VALUES(600, \"Nombre600\");\nINSERT INTO Estudiante VALUES(601, \"Nombre601\");\nINSERT INTO Estudiante VALUES(602, \"Nombre602\");\nINSERT INTO Estudiante VALUES(603, \"Nombre603\");\nINSERT INTO Estudiante VALUES(604, \"Nombre604\");\nINSERT INTO Estudiante VALUES(605, \"Nombre605\");\nINSERT INTO Estudiante VALUES(606, \"Nombre606\");\nINSERT INTO Estudiante VALUES(607, \"Nombre607\");\nINSERT INTO Estudiante VALUES(608, \"Nombre608\");\nINSERT INTO Estudiante VALUES(609, \"Nombre609\");\nINSERT INTO Estudiante VALUES(610, \"Nombre610\");\nINSERT INTO Estudiante VALUES(611, \"Nombre611\");\nINSERT INTO Estudiante VALUES(612, \"Nombre612\");\nINSERT INTO Estudiante VALUES(613, \"Nombre613\");\nINSERT INTO Estudiante VALUES(614, \"Nombre614\");\nINSERT INTO Estudiante VALUES(615, \"Nombre615\");\nINSERT INTO Estudiante VALUES(616, \"Nombre616\");\nINSERT INTO Estudiante VALUES(617, \"Nombre617\");\nINSERT INTO Estudiante VALUES(618, \"Nombre618\");\nINSERT INTO Estudiante VALUES(619, \"Nombre619\");\nINSERT INTO Estudiante VALUES(620, \"Nombre620\");\nINSERT INTO Estudiante VALUES(621, \"Nombre621\");\nINSERT INTO Estudiante VALUES(622, \"Nombre622\");\nINSERT INTO Estudiante VALUES(623, \"Nombre623\");\nINSERT INTO Estudiante VALUES(624, \"Nombre624\");\nINSERT INTO Estudiante VALUES(625, \"Nombre625\");\nINSERT INTO Estudiante VALUES(626, \"Nombre626\");\nINSERT INTO Estudiante VALUES(627, \"Nombre627\");\nINSERT INTO Estudiante VALUES(628, \"Nombre628\");\nINSERT INTO Estudiante VALUES(629, \"Nombre629\");\nINSERT INTO Estudiante VALUES(630, \"Nombre630\");\nINSERT INTO Estudiante VALUES(631, \"Nombre631\");\nINSERT INTO Estudiante VALUES(632, \"Nombre632\");\nINSERT INTO Estudiante VALUES(633, \"Nombre633\");\nINSERT INTO Estudiante VALUES(634, \"Nombre634\");\nINSERT INTO Estudiante VALUES(635, \"Nombre635\");\nINSERT INTO Estudiante VALUES(636, \"Nombre636\");\nINSERT INTO Estudiante VALUES(637, \"Nombre637\");\nINSERT INTO Estudiante VALUES(638, \"Nombre638\");\nINSERT INTO Estudiante VALUES(639, \"Nombre639\");\nINSERT INTO Estudiante VALUES(640, \"Nombre640\");\nINSERT INTO Estudiante VALUES(641, \"Nombre641\");\nINSERT INTO Estudiante VALUES(642, \"Nombre642\");\nINSERT INTO Estudiante VALUES(643, \"Nombre643\");\nINSERT INTO Estudiante VALUES(644, \"Nombre644\");\nINSERT INTO Estudiante VALUES(645, \"Nombre645\");\nINSERT INTO Estudiante VALUES(646, \"Nombre646\");\nINSERT INTO Estudiante VALUES(647, \"Nombre647\");\nINSERT INTO Estudiante VALUES(648, \"Nombre648\");\nINSERT INTO Estudiante VALUES(649, \"Nombre649\");\nINSERT INTO Estudiante VALUES(650, \"Nombre650\");\nINSERT INTO Estudiante VALUES(651, \"Nombre651\");\nINSERT INTO Estudiante VALUES(652, \"Nombre652\");\nINSERT INTO Estudiante VALUES(653, \"Nombre653\");\nINSERT INTO Estudiante VALUES(654, \"Nombre654\");\nINSERT INTO Estudiante VALUES(655, \"Nombre655\");\nINSERT INTO Estudiante VALUES(656, \"Nombre656\");\nINSERT INTO Estudiante VALUES(657, \"Nombre657\");\nINSERT INTO Estudiante VALUES(658, \"Nombre658\");\nINSERT INTO Estudiante VALUES(659, \"Nombre659\");\nINSERT INTO Estudiante VALUES(660, \"Nombre660\");\nINSERT INTO Estudiante VALUES(661, \"Nombre661\");\nINSERT INTO Estudiante VALUES(662, \"Nombre662\");\nINSERT INTO Estudiante VALUES(663, \"Nombre663\");\nINSERT INTO Estudiante VALUES(664, \"Nombre664\");\nINSERT INTO Estudiante VALUES(665, \"Nombre665\");\nINSERT INTO Estudiante VALUES(666, \"Nombre666\");\nINSERT INTO Estudiante VALUES(667, \"Nombre667\");\nINSERT INTO Estudiante VALUES(668, \"Nombre668\");\nINSERT INTO Estudiante VALUES(669, \"Nombre669\");\nINSERT INTO Estudiante VALUES(670, \"Nombre670\");\nINSERT INTO Estudiante VALUES(671, \"Nombre671\");\nINSERT INTO Estudiante VALUES(672, \"Nombre672\");\nINSERT INTO Estudiante VALUES(673, \"Nombre673\");\nINSERT INTO Estudiante VALUES(674, \"Nombre674\");\nINSERT INTO Estudiante VALUES(675, \"Nombre675\");\nINSERT INTO Estudiante VALUES(676, \"Nombre676\");\nINSERT INTO Estudiante VALUES(677, \"Nombre677\");\nINSERT INTO Estudiante VALUES(678, \"Nombre678\");\nINSERT INTO Estudiante VALUES(679, \"Nombre679\");\nINSERT INTO Estudiante VALUES(680, \"Nombre680\");\nINSERT INTO Estudiante VALUES(681, \"Nombre681\");\nINSERT INTO Estudiante VALUES(682, \"Nombre682\");\nINSERT INTO Estudiante VALUES(683, \"Nombre683\");\nINSERT INTO Estudiante VALUES(684, \"Nombre684\");\nINSERT INTO Estudiante VALUES(685, \"Nombre685\");\nINSERT INTO Estudiante VALUES(686, \"Nombre686\");\nINSERT INTO Estudiante VALUES(687, \"Nombre687\");\nINSERT INTO Estudiante VALUES(688, \"Nombre688\");\nINSERT INTO Estudiante VALUES(689, \"Nombre689\");\nINSERT INTO Estudiante VALUES(690, \"Nombre690\");\nINSERT INTO Estudiante VALUES(691, \"Nombre691\");\nINSERT INTO Estudiante VALUES(692, \"Nombre692\");\nINSERT INTO Estudiante VALUES(693, \"Nombre693\");\nINSERT INTO Estudiante VALUES(694, \"Nombre694\");\nINSERT INTO Estudiante VALUES(695, \"Nombre695\");\nINSERT INTO Estudiante VALUES(696, \"Nombre696\");\nINSERT INTO Estudiante VALUES(697, \"Nombre697\");\nINSERT INTO Estudiante VALUES(698, \"Nombre698\");\nINSERT INTO Estudiante VALUES(699, \"Nombre699\");\nINSERT INTO Estudiante VALUES(700, \"Nombre700\");\nINSERT INTO Estudiante VALUES(701, \"Nombre701\");\nINSERT INTO Estudiante VALUES(702, \"Nombre702\");\nINSERT INTO Estudiante VALUES(703, \"Nombre703\");\nINSERT INTO Estudiante VALUES(704, \"Nombre704\");\nINSERT INTO Estudiante VALUES(705, \"Nombre705\");\nINSERT INTO Estudiante VALUES(706, \"Nombre706\");\nINSERT INTO Estudiante VALUES(707, \"Nombre707\");\nINSERT INTO Estudiante VALUES(708, \"Nombre708\");\nINSERT INTO Estudiante VALUES(709, \"Nombre709\");\nINSERT INTO Estudiante VALUES(710, \"Nombre710\");\nINSERT INTO Estudiante VALUES(711, \"Nombre711\");\nINSERT INTO Estudiante VALUES(712, \"Nombre712\");\nINSERT INTO Estudiante VALUES(713, \"Nombre713\");\nINSERT INTO Estudiante VALUES(714, \"Nombre714\");\nINSERT INTO Estudiante VALUES(715, \"Nombre715\");\nINSERT INTO Estudiante VALUES(716, \"Nombre716\");\nINSERT INTO Estudiante VALUES(717, \"Nombre717\");\nINSERT INTO Estudiante VALUES(718, \"Nombre718\");\nINSERT INTO Estudiante VALUES(719, \"Nombre719\");\nINSERT INTO Estudiante VALUES(720, \"Nombre720\");\nINSERT INTO Estudiante VALUES(721, \"Nombre721\");\nINSERT INTO Estudiante VALUES(722, \"Nombre722\");\nINSERT INTO Estudiante VALUES(723, \"Nombre723\");\nINSERT INTO Estudiante VALUES(724, \"Nombre724\");\nINSERT INTO Estudiante VALUES(725, \"Nombre725\");\nINSERT INTO Estudiante VALUES(726, \"Nombre726\");\nINSERT INTO Estudiante VALUES(727, \"Nombre727\");\nINSERT INTO Estudiante VALUES(728, \"Nombre728\");\nINSERT INTO Estudiante VALUES(729, \"Nombre729\");\nINSERT INTO Estudiante VALUES(730, \"Nombre730\");\nINSERT INTO Estudiante VALUES(731, \"Nombre731\");\nINSERT INTO Estudiante VALUES(732, \"Nombre732\");\nINSERT INTO Estudiante VALUES(733, \"Nombre733\");\nINSERT INTO Estudiante VALUES(734, \"Nombre734\");\nINSERT INTO Estudiante VALUES(735, \"Nombre735\");\nINSERT INTO Estudiante VALUES(736, \"Nombre736\");\nINSERT INTO Estudiante VALUES(737, \"Nombre737\");\nINSERT INTO Estudiante VALUES(738, \"Nombre738\");\nINSERT INTO Estudiante VALUES(739, \"Nombre739\");\nINSERT INTO Estudiante VALUES(740, \"Nombre740\");\nINSERT INTO Estudiante VALUES(741, \"Nombre741\");\nINSERT INTO Estudiante VALUES(742, \"Nombre742\");\nINSERT INTO Estudiante VALUES(743, \"Nombre743\");\nINSERT INTO Estudiante VALUES(744, \"Nombre744\");\nINSERT INTO Estudiante VALUES(745, \"Nombre745\");\nINSERT INTO Estudiante VALUES(746, \"Nombre746\");\nINSERT INTO Estudiante VALUES(747, \"Nombre747\");\nINSERT INTO Estudiante VALUES(748, \"Nombre748\");\nINSERT INTO Estudiante VALUES(749, \"Nombre749\");\nINSERT INTO Estudiante VALUES(750, \"Nombre750\");\nINSERT INTO Estudiante VALUES(751, \"Nombre751\");\nINSERT INTO Estudiante VALUES(752, \"Nombre752\");\nINSERT INTO Estudiante VALUES(753, \"Nombre753\");\nINSERT INTO Estudiante VALUES(754, \"Nombre754\");\nINSERT INTO Estudiante VALUES(755, \"Nombre755\");\nINSERT INTO Estudiante VALUES(756, \"Nombre756\");\nINSERT INTO Estudiante VALUES(757, \"Nombre757\");\nINSERT INTO Estudiante VALUES(758, \"Nombre758\");\nINSERT INTO Estudiante VALUES(759, \"Nombre759\");\nINSERT INTO Estudiante VALUES(760, \"Nombre760\");\nINSERT INTO Estudiante VALUES(761, \"Nombre761\");\nINSERT INTO Estudiante VALUES(762, \"Nombre762\");\nINSERT INTO Estudiante VALUES(763, \"Nombre763\");\nINSERT INTO Estudiante VALUES(764, \"Nombre764\");\nINSERT INTO Estudiante VALUES(765, \"Nombre765\");\nINSERT INTO Estudiante VALUES(766, \"Nombre766\");\nINSERT INTO Estudiante VALUES(767, \"Nombre767\");\nINSERT INTO Estudiante VALUES(768, \"Nombre768\");\nINSERT INTO Estudiante VALUES(769, \"Nombre769\");\nINSERT INTO Estudiante VALUES(770, \"Nombre770\");\nINSERT INTO Estudiante VALUES(771, \"Nombre771\");\nINSERT INTO Estudiante VALUES(772, \"Nombre772\");\nINSERT INTO Estudiante VALUES(773, \"Nombre773\");\nINSERT INTO Estudiante VALUES(774, \"Nombre774\");\nINSERT INTO Estudiante VALUES(775, \"Nombre775\");\nINSERT INTO Estudiante VALUES(776, \"Nombre776\");\nINSERT INTO Estudiante VALUES(777, \"Nombre777\");\nINSERT INTO Estudiante VALUES(778, \"Nombre778\");\nINSERT INTO Estudiante VALUES(779, \"Nombre779\");\nINSERT INTO Estudiante VALUES(780, \"Nombre780\");\nINSERT INTO Estudiante VALUES(781, \"Nombre781\");\nINSERT INTO Estudiante VALUES(782, \"Nombre782\");\nINSERT INTO Estudiante VALUES(783, \"Nombre783\");\nINSERT INTO Estudiante VALUES(784, \"Nombre784\");\nINSERT INTO Estudiante VALUES(785, \"Nombre785\");\nINSERT INTO Estudiante VALUES(786, \"Nombre786\");\nINSERT INTO Estudiante VALUES(787, \"Nombre787\");\nINSERT INTO Estudiante VALUES(788, \"Nombre788\");\nINSERT INTO Estudiante VALUES(789, \"Nombre789\");\nINSERT INTO Estudiante VALUES(790, \"Nombre790\");\nINSERT INTO Estudiante VALUES(791, \"Nombre791\");\nINSERT INTO Estudiante VALUES(792, \"Nombre792\");\nINSERT INTO Estudiante VALUES(793, \"Nombre793\");\nINSERT INTO Estudiante VALUES(794, \"Nombre794\");\nINSERT INTO Estudiante VALUES(795, \"Nombre795\");\nINSERT INTO Estudiante VALUES(796, \"Nombre796\");\nINSERT INTO Estudiante VALUES(797, \"Nombre797\");\nINSERT INTO Estudiante VALUES(798, \"Nombre798\");\nINSERT INTO Estudiante VALUES(799, \"Nombre799\");\nINSERT INTO Estudiante VALUES(800, \"Nombre800\");\nINSERT INTO Estudiante VALUES(801, \"Nombre801\");\nINSERT INTO Estudiante VALUES(802, \"Nombre802\");\nINSERT INTO Estudiante VALUES(803, \"Nombre803\");\nINSERT INTO Estudiante VALUES(804, \"Nombre804\");\nINSERT INTO Estudiante VALUES(805, \"Nombre805\");\nINSERT INTO Estudiante VALUES(806, \"Nombre806\");\nINSERT INTO Estudiante VALUES(807, \"Nombre807\");\nINSERT INTO Estudiante VALUES(808, \"Nombre808\");\nINSERT INTO Estudiante VALUES(809, \"Nombre809\");\nINSERT INTO Estudiante VALUES(810, \"Nombre810\");\nINSERT INTO Estudiante VALUES(811, \"Nombre811\");\nINSERT INTO Estudiante VALUES(812, \"Nombre812\");\nINSERT INTO Estudiante VALUES(813, \"Nombre813\");\nINSERT INTO Estudiante VALUES(814, \"Nombre814\");\nINSERT INTO Estudiante VALUES(815, \"Nombre815\");\nINSERT INTO Estudiante VALUES(816, \"Nombre816\");\nINSERT INTO Estudiante VALUES(817, \"Nombre817\");\nINSERT INTO Estudiante VALUES(818, \"Nombre818\");\nINSERT INTO Estudiante VALUES(819, \"Nombre819\");\nINSERT INTO Estudiante VALUES(820, \"Nombre820\");\nINSERT INTO Estudiante VALUES(821, \"Nombre821\");\nINSERT INTO Estudiante VALUES(822, \"Nombre822\");\nINSERT INTO Estudiante VALUES(823, \"Nombre823\");\nINSERT INTO Estudiante VALUES(824, \"Nombre824\");\nINSERT INTO Estudiante VALUES(825, \"Nombre825\");\nINSERT INTO Estudiante VALUES(826, \"Nombre826\");\nINSERT INTO Estudiante VALUES(827, \"Nombre827\");\nINSERT INTO Estudiante VALUES(828, \"Nombre828\");\nINSERT INTO Estudiante VALUES(829, \"Nombre829\");\nINSERT INTO Estudiante VALUES(830, \"Nombre830\");\nINSERT INTO Estudiante VALUES(831, \"Nombre831\");\nINSERT INTO Estudiante VALUES(832, \"Nombre832\");\nINSERT INTO Estudiante VALUES(833, \"Nombre833\");\nINSERT INTO Estudiante VALUES(834, \"Nombre834\");\nINSERT INTO Estudiante VALUES(835, \"Nombre835\");\nINSERT INTO Estudiante VALUES(836, \"Nombre836\");\nINSERT INTO Estudiante VALUES(837, \"Nombre837\");\nINSERT INTO Estudiante VALUES(838, \"Nombre838\");\nINSERT INTO Estudiante VALUES(839, \"Nombre839\");\nINSERT INTO Estudiante VALUES(840, \"Nombre840\");\nINSERT INTO Estudiante VALUES(841, \"Nombre841\");\nINSERT INTO Estudiante VALUES(842, \"Nombre842\");\nINSERT INTO Estudiante VALUES(843, \"Nombre843\");\nINSERT INTO Estudiante VALUES(844, \"Nombre844\");\nINSERT INTO Estudiante VALUES(845, \"Nombre845\");\nINSERT INTO Estudiante VALUES(846, \"Nombre846\");\nINSERT INTO Estudiante VALUES(847, \"Nombre847\");\nINSERT INTO Estudiante VALUES(848, \"Nombre848\");\nINSERT INTO Estudiante VALUES(849, \"Nombre849\");\nINSERT INTO Estudiante VALUES(850, \"Nombre850\");\nINSERT INTO Estudiante VALUES(851, \"Nombre851\");\nINSERT INTO Estudiante VALUES(852, \"Nombre852\");\nINSERT INTO Estudiante VALUES(853, \"Nombre853\");\nINSERT INTO Estudiante VALUES(854, \"Nombre854\");\nINSERT INTO Estudiante VALUES(855, \"Nombre855\");\nINSERT INTO Estudiante VALUES(856, \"Nombre856\");\nINSERT INTO Estudiante VALUES(857, \"Nombre857\");\nINSERT INTO Estudiante VALUES(858, \"Nombre858\");\nINSERT INTO Estudiante VALUES(859, \"Nombre859\");\nINSERT INTO Estudiante VALUES(860, \"Nombre860\");\nINSERT INTO Estudiante VALUES(861, \"Nombre861\");\nINSERT INTO Estudiante VALUES(862, \"Nombre862\");\nINSERT INTO Estudiante VALUES(863, \"Nombre863\");\nINSERT INTO Estudiante VALUES(864, \"Nombre864\");\nINSERT INTO Estudiante VALUES(865, \"Nombre865\");\nINSERT INTO Estudiante VALUES(866, \"Nombre866\");\nINSERT INTO Estudiante VALUES(867, \"Nombre867\");\nINSERT INTO Estudiante VALUES(868, \"Nombre868\");\nINSERT INTO Estudiante VALUES(869, \"Nombre869\");\nINSERT INTO Estudiante VALUES(870, \"Nombre870\");\nINSERT INTO Estudiante VALUES(871, \"Nombre871\");\nINSERT INTO Estudiante VALUES(872, \"Nombre872\");\nINSERT INTO Estudiante VALUES(873, \"Nombre873\");\nINSERT INTO Estudiante VALUES(874, \"Nombre874\");\nINSERT INTO Estudiante VALUES(875, \"Nombre875\");\nINSERT INTO Estudiante VALUES(876, \"Nombre876\");\nINSERT INTO Estudiante VALUES(877, \"Nombre877\");\nINSERT INTO Estudiante VALUES(878, \"Nombre878\");\nINSERT INTO Estudiante VALUES(879, \"Nombre879\");\nINSERT INTO Estudiante VALUES(880, \"Nombre880\");\nINSERT INTO Estudiante VALUES(881, \"Nombre881\");\nINSERT INTO Estudiante VALUES(882, \"Nombre882\");\nINSERT INTO Estudiante VALUES(883, \"Nombre883\");\nINSERT INTO Estudiante VALUES(884, \"Nombre884\");\nINSERT INTO Estudiante VALUES(885, \"Nombre885\");\nINSERT INTO Estudiante VALUES(886, \"Nombre886\");\nINSERT INTO Estudiante VALUES(887, \"Nombre887\");\nINSERT INTO Estudiante VALUES(888, \"Nombre888\");\nINSERT INTO Estudiante VALUES(889, \"Nombre889\");\nINSERT INTO Estudiante VALUES(890, \"Nombre890\");\nINSERT INTO Estudiante VALUES(891, \"Nombre891\");\nINSERT INTO Estudiante VALUES(892, \"Nombre892\");\nINSERT INTO Estudiante VALUES(893, \"Nombre893\");\nINSERT INTO Estudiante VALUES(894, \"Nombre894\");\nINSERT INTO Estudiante VALUES(895, \"Nombre895\");\nINSERT INTO Estudiante VALUES(896, \"Nombre896\");\nINSERT INTO Estudiante VALUES(897, \"Nombre897\");\nINSERT INTO Estudiante VALUES(898, \"Nombre898\");\nINSERT INTO Estudiante VALUES(899, \"Nombre899\");\nINSERT INTO Estudiante VALUES(900, \"Nombre900\");\nINSERT INTO Estudiante VALUES(901, \"Nombre901\");\nINSERT INTO Estudiante VALUES(902, \"Nombre902\");\nINSERT INTO Estudiante VALUES(903, \"Nombre903\");\nINSERT INTO Estudiante VALUES(904, \"Nombre904\");\nINSERT INTO Estudiante VALUES(905, \"Nombre905\");\nINSERT INTO Estudiante VALUES(906, \"Nombre906\");\nINSERT INTO Estudiante VALUES(907, \"Nombre907\");\nINSERT INTO Estudiante VALUES(908, \"Nombre908\");\nINSERT INTO Estudiante VALUES(909, \"Nombre909\");\nINSERT INTO Estudiante VALUES(910, \"Nombre910\");\nINSERT INTO Estudiante VALUES(911, \"Nombre911\");\nINSERT INTO Estudiante VALUES(912, \"Nombre912\");\nINSERT INTO Estudiante VALUES(913, \"Nombre913\");\nINSERT INTO Estudiante VALUES(914, \"Nombre914\");\nINSERT INTO Estudiante VALUES(915, \"Nombre915\");\nINSERT INTO Estudiante VALUES(916, \"Nombre916\");\nINSERT INTO Estudiante VALUES(917, \"Nombre917\");\nINSERT INTO Estudiante VALUES(918, \"Nombre918\");\nINSERT INTO Estudiante VALUES(919, \"Nombre919\");\nINSERT INTO Estudiante VALUES(920, \"Nombre920\");\nINSERT INTO Estudiante VALUES(921, \"Nombre921\");\nINSERT INTO Estudiante VALUES(922, \"Nombre922\");\nINSERT INTO Estudiante VALUES(923, \"Nombre923\");\nINSERT INTO Estudiante VALUES(924, \"Nombre924\");\nINSERT INTO Estudiante VALUES(925, \"Nombre925\");\nINSERT INTO Estudiante VALUES(926, \"Nombre926\");\nINSERT INTO Estudiante VALUES(927, \"Nombre927\");\nINSERT INTO Estudiante VALUES(928, \"Nombre928\");\nINSERT INTO Estudiante VALUES(929, \"Nombre929\");\nINSERT INTO Estudiante VALUES(930, \"Nombre930\");\nINSERT INTO Estudiante VALUES(931, \"Nombre931\");\nINSERT INTO Estudiante VALUES(932, \"Nombre932\");\nINSERT INTO Estudiante VALUES(933, \"Nombre933\");\nINSERT INTO Estudiante VALUES(934, \"Nombre934\");\nINSERT INTO Estudiante VALUES(935, \"Nombre935\");\nINSERT INTO Estudiante VALUES(936, \"Nombre936\");\nINSERT INTO Estudiante VALUES(937, \"Nombre937\");\nINSERT INTO Estudiante VALUES(938, \"Nombre938\");\nINSERT INTO Estudiante VALUES(939, \"Nombre939\");\nINSERT INTO Estudiante VALUES(940, \"Nombre940\");\nINSERT INTO Estudiante VALUES(941, \"Nombre941\");\nINSERT INTO Estudiante VALUES(942, \"Nombre942\");\nINSERT INTO Estudiante VALUES(943, \"Nombre943\");\nINSERT INTO Estudiante VALUES(944, \"Nombre944\");\nINSERT INTO Estudiante VALUES(945, \"Nombre945\");\nINSERT INTO Estudiante VALUES(946, \"Nombre946\");\nINSERT INTO Estudiante VALUES(947, \"Nombre947\");\nINSERT INTO Estudiante VALUES(948, \"Nombre948\");\nINSERT INTO Estudiante VALUES(949, \"Nombre949\");\nINSERT INTO Estudiante VALUES(950, \"Nombre950\");\nINSERT INTO Estudiante VALUES(951, \"Nombre951\");\nINSERT INTO Estudiante VALUES(952, \"Nombre952\");\nINSERT INTO Estudiante VALUES(953, \"Nombre953\");\nINSERT INTO Estudiante VALUES(954, \"Nombre954\");\nINSERT INTO Estudiante VALUES(955, \"Nombre955\");\nINSERT INTO Estudiante VALUES(956, \"Nombre956\");\nINSERT INTO Estudiante VALUES(957, \"Nombre957\");\nINSERT INTO Estudiante VALUES(958, \"Nombre958\");\nINSERT INTO Estudiante VALUES(959, \"Nombre959\");\nINSERT INTO Estudiante VALUES(960, \"Nombre960\");\nINSERT INTO Estudiante VALUES(961, \"Nombre961\");\nINSERT INTO Estudiante VALUES(962, \"Nombre962\");\nINSERT INTO Estudiante VALUES(963, \"Nombre963\");\nINSERT INTO Estudiante VALUES(964, \"Nombre964\");\nINSERT INTO Estudiante VALUES(965, \"Nombre965\");\nINSERT INTO Estudiante VALUES(966, \"Nombre966\");\nINSERT INTO Estudiante VALUES(967, \"Nombre967\");\nINSERT INTO Estudiante VALUES(968, \"Nombre968\");\nINSERT INTO Estudiante VALUES(969, \"Nombre969\");\nINSERT INTO Estudiante VALUES(970, \"Nombre970\");\nINSERT INTO Estudiante VALUES(971, \"Nombre971\");\nINSERT INTO Estudiante VALUES(972, \"Nombre972\");\nINSERT INTO Estudiante VALUES(973, \"Nombre973\");\nINSERT INTO Estudiante VALUES(974, \"Nombre974\");\nINSERT INTO Estudiante VALUES(975, \"Nombre975\");\nINSERT INTO Estudiante VALUES(976, \"Nombre976\");\nINSERT INTO Estudiante VALUES(977, \"Nombre977\");\nINSERT INTO Estudiante VALUES(978, \"Nombre978\");\nINSERT INTO Estudiante VALUES(979, \"Nombre979\");\nINSERT INTO Estudiante VALUES(980, \"Nombre980\");\nINSERT INTO Estudiante VALUES(981, \"Nombre981\");\nINSERT INTO Estudiante VALUES(982, \"Nombre982\");\nINSERT INTO Estudiante VALUES(983, \"Nombre983\");\nINSERT INTO Estudiante VALUES(984, \"Nombre984\");\nINSERT INTO Estudiante VALUES(985, \"Nombre985\");\nINSERT INTO Estudiante VALUES(986, \"Nombre986\");\nINSERT INTO Estudiante VALUES(987, \"Nombre987\");\nINSERT INTO Estudiante VALUES(988, \"Nombre988\");\nINSERT INTO Estudiante VALUES(989, \"Nombre989\");\nINSERT INTO Estudiante VALUES(990, \"Nombre990\");\nINSERT INTO Estudiante VALUES(991, \"Nombre991\");\nINSERT INTO Estudiante VALUES(992, \"Nombre992\");\nINSERT INTO Estudiante VALUES(993, \"Nombre993\");\nINSERT INTO Estudiante VALUES(994, \"Nombre994\");\nINSERT INTO Estudiante VALUES(995, \"Nombre995\");\nINSERT INTO Estudiante VALUES(996, \"Nombre996\");\nINSERT INTO Estudiante VALUES(997, \"Nombre997\");\nINSERT INTO Estudiante VALUES(998, \"Nombre998\");\nINSERT INTO Estudiante VALUES(999, \"Nombre999\");\nINSERT INTO Estudiante VALUES(1000, \"Nombre1000\");\n\nSELECT * FROM Estudiante WHERE ID = 900;\nSELECT * FROM Estudiante WHERE ID = 901;\nSELECT * FROM Estudiante WHERE ID = 902;\nSELECT * FROM Estudiante WHERE ID = 903;\nSELECT * FROM Estudiante WHERE ID = 904;\nSELECT * FROM Estudiante WHERE ID = 905;\nSELECT * FROM Estudiante WHERE ID = 906;\nSELECT * FROM Estudiante WHERE ID = 907;\nSELECT * FROM Estudiante WHERE ID = 908;\nSELECT * FROM Estudiante WHERE ID = 909;\nSELECT * FROM Estudiante WHERE ID = 910;\nSELECT * FROM Estudiante WHERE ID = 911;\nSELECT * FROM Estudiante WHERE ID = 912;\nSELECT * FROM Estudiante WHERE ID = 913;\nSELECT * FROM Estudiante WHERE ID = 914;\nSELECT * FROM Estudiante WHERE ID = 915;\nSELECT * FROM Estudiante WHERE ID = 916;\nSELECT * FROM Estudiante WHERE ID = 917;\nSELECT * FROM Estudiante WHERE ID = 918;\nSELECT * FROM Estudiante WHERE ID = 919;\nSELECT * FROM Estudiante WHERE ID = 920;\nSELECT * FROM Estudiante WHERE ID = 921;\nSELECT * FROM Estudiante WHERE ID = 922;\nSELECT * FROM Estudiante WHERE ID = 923;\nSELECT * FROM Estudiante WHERE ID = 924;\nSELECT * FROM Estudiante WHERE ID = 925;\nSELECT * FROM Estudiante WHERE ID = 926;\nSELECT * FROM Estudiante WHERE ID = 927;\nSELECT * FROM Estudiante WHERE ID = 928;\nSELECT * FROM Estudiante WHERE ID = 929;\nSELECT * FROM Estudiante WHERE ID = 930;\nSELECT * FROM Estudiante WHERE ID = 931;\nSELECT * FROM Estudiante WHERE ID = 932;\nSELECT * FROM Estudiante WHERE ID = 933;\nSELECT * FROM Estudiante WHERE ID = 934;\nSELECT * FROM Estudiante WHERE ID = 935;\nSELECT * FROM Estudiante WHERE ID = 936;\nSELECT * FROM Estudiante WHERE ID = 937;\nSELECT * FROM Estudiante WHERE ID = 938;\nSELECT * FROM Estudiante WHERE ID = 939;\nSELECT * FROM Estudiante WHERE ID = 940;\nSELECT * FROM Estudiante WHERE ID = 941;\nSELECT * FROM Estudiante WHERE ID = 942;\nSELECT * FROM Estudiante WHERE ID = 943;\nSELECT * FROM Estudiante WHERE ID = 944;\nSELECT * FROM Estudiante WHERE ID = 945;\nSELECT * FROM Estudiante WHERE ID = 946;\nSELECT * FROM Estudiante WHERE ID = 947;\nSELECT * FROM Estudiante WHERE ID = 948;\nSELECT * FROM Estudiante WHERE ID = 999;\n",
-      "statementCount": 1053
-  },
-    {
-      "id": "benchmark-bst",
-      "title": "Benchmark con BST",
-      "category": "Performance",
-      "sourceFile": "scripts/benchmarks/02_select_with_bst.sql",
-      "description": "Carga 1000 registros, crea índice BST y ejecuta 50 consultas SELECT por igualdad sobre la columna indexada.",
-      "expectedBehavior": "Debe mejorar contra la búsqueda secuencial. Comparar principalmente promedio SELECT y SELECT final.",
-      "heavy": true,
-      "errorScenario": false,
-      "recommended": true,
-      "script": "CREATE DATABASE BenchmarkBST;\nSET DATABASE BenchmarkBST;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\nINSERT INTO Estudiante VALUES(1, \"Nombre1\");\nINSERT INTO Estudiante VALUES(2, \"Nombre2\");\nINSERT INTO Estudiante VALUES(3, \"Nombre3\");\nINSERT INTO Estudiante VALUES(4, \"Nombre4\");\nINSERT INTO Estudiante VALUES(5, \"Nombre5\");\nINSERT INTO Estudiante VALUES(6, \"Nombre6\");\nINSERT INTO Estudiante VALUES(7, \"Nombre7\");\nINSERT INTO Estudiante VALUES(8, \"Nombre8\");\nINSERT INTO Estudiante VALUES(9, \"Nombre9\");\nINSERT INTO Estudiante VALUES(10, \"Nombre10\");\nINSERT INTO Estudiante VALUES(11, \"Nombre11\");\nINSERT INTO Estudiante VALUES(12, \"Nombre12\");\nINSERT INTO Estudiante VALUES(13, \"Nombre13\");\nINSERT INTO Estudiante VALUES(14, \"Nombre14\");\nINSERT INTO Estudiante VALUES(15, \"Nombre15\");\nINSERT INTO Estudiante VALUES(16, \"Nombre16\");\nINSERT INTO Estudiante VALUES(17, \"Nombre17\");\nINSERT INTO Estudiante VALUES(18, \"Nombre18\");\nINSERT INTO Estudiante VALUES(19, \"Nombre19\");\nINSERT INTO Estudiante VALUES(20, \"Nombre20\");\nINSERT INTO Estudiante VALUES(21, \"Nombre21\");\nINSERT INTO Estudiante VALUES(22, \"Nombre22\");\nINSERT INTO Estudiante VALUES(23, \"Nombre23\");\nINSERT INTO Estudiante VALUES(24, \"Nombre24\");\nINSERT INTO Estudiante VALUES(25, \"Nombre25\");\nINSERT INTO Estudiante VALUES(26, \"Nombre26\");\nINSERT INTO Estudiante VALUES(27, \"Nombre27\");\nINSERT INTO Estudiante VALUES(28, \"Nombre28\");\nINSERT INTO Estudiante VALUES(29, \"Nombre29\");\nINSERT INTO Estudiante VALUES(30, \"Nombre30\");\nINSERT INTO Estudiante VALUES(31, \"Nombre31\");\nINSERT INTO Estudiante VALUES(32, \"Nombre32\");\nINSERT INTO Estudiante VALUES(33, \"Nombre33\");\nINSERT INTO Estudiante VALUES(34, \"Nombre34\");\nINSERT INTO Estudiante VALUES(35, \"Nombre35\");\nINSERT INTO Estudiante VALUES(36, \"Nombre36\");\nINSERT INTO Estudiante VALUES(37, \"Nombre37\");\nINSERT INTO Estudiante VALUES(38, \"Nombre38\");\nINSERT INTO Estudiante VALUES(39, \"Nombre39\");\nINSERT INTO Estudiante VALUES(40, \"Nombre40\");\nINSERT INTO Estudiante VALUES(41, \"Nombre41\");\nINSERT INTO Estudiante VALUES(42, \"Nombre42\");\nINSERT INTO Estudiante VALUES(43, \"Nombre43\");\nINSERT INTO Estudiante VALUES(44, \"Nombre44\");\nINSERT INTO Estudiante VALUES(45, \"Nombre45\");\nINSERT INTO Estudiante VALUES(46, \"Nombre46\");\nINSERT INTO Estudiante VALUES(47, \"Nombre47\");\nINSERT INTO Estudiante VALUES(48, \"Nombre48\");\nINSERT INTO Estudiante VALUES(49, \"Nombre49\");\nINSERT INTO Estudiante VALUES(50, \"Nombre50\");\nINSERT INTO Estudiante VALUES(51, \"Nombre51\");\nINSERT INTO Estudiante VALUES(52, \"Nombre52\");\nINSERT INTO Estudiante VALUES(53, \"Nombre53\");\nINSERT INTO Estudiante VALUES(54, \"Nombre54\");\nINSERT INTO Estudiante VALUES(55, \"Nombre55\");\nINSERT INTO Estudiante VALUES(56, \"Nombre56\");\nINSERT INTO Estudiante VALUES(57, \"Nombre57\");\nINSERT INTO Estudiante VALUES(58, \"Nombre58\");\nINSERT INTO Estudiante VALUES(59, \"Nombre59\");\nINSERT INTO Estudiante VALUES(60, \"Nombre60\");\nINSERT INTO Estudiante VALUES(61, \"Nombre61\");\nINSERT INTO Estudiante VALUES(62, \"Nombre62\");\nINSERT INTO Estudiante VALUES(63, \"Nombre63\");\nINSERT INTO Estudiante VALUES(64, \"Nombre64\");\nINSERT INTO Estudiante VALUES(65, \"Nombre65\");\nINSERT INTO Estudiante VALUES(66, \"Nombre66\");\nINSERT INTO Estudiante VALUES(67, \"Nombre67\");\nINSERT INTO Estudiante VALUES(68, \"Nombre68\");\nINSERT INTO Estudiante VALUES(69, \"Nombre69\");\nINSERT INTO Estudiante VALUES(70, \"Nombre70\");\nINSERT INTO Estudiante VALUES(71, \"Nombre71\");\nINSERT INTO Estudiante VALUES(72, \"Nombre72\");\nINSERT INTO Estudiante VALUES(73, \"Nombre73\");\nINSERT INTO Estudiante VALUES(74, \"Nombre74\");\nINSERT INTO Estudiante VALUES(75, \"Nombre75\");\nINSERT INTO Estudiante VALUES(76, \"Nombre76\");\nINSERT INTO Estudiante VALUES(77, \"Nombre77\");\nINSERT INTO Estudiante VALUES(78, \"Nombre78\");\nINSERT INTO Estudiante VALUES(79, \"Nombre79\");\nINSERT INTO Estudiante VALUES(80, \"Nombre80\");\nINSERT INTO Estudiante VALUES(81, \"Nombre81\");\nINSERT INTO Estudiante VALUES(82, \"Nombre82\");\nINSERT INTO Estudiante VALUES(83, \"Nombre83\");\nINSERT INTO Estudiante VALUES(84, \"Nombre84\");\nINSERT INTO Estudiante VALUES(85, \"Nombre85\");\nINSERT INTO Estudiante VALUES(86, \"Nombre86\");\nINSERT INTO Estudiante VALUES(87, \"Nombre87\");\nINSERT INTO Estudiante VALUES(88, \"Nombre88\");\nINSERT INTO Estudiante VALUES(89, \"Nombre89\");\nINSERT INTO Estudiante VALUES(90, \"Nombre90\");\nINSERT INTO Estudiante VALUES(91, \"Nombre91\");\nINSERT INTO Estudiante VALUES(92, \"Nombre92\");\nINSERT INTO Estudiante VALUES(93, \"Nombre93\");\nINSERT INTO Estudiante VALUES(94, \"Nombre94\");\nINSERT INTO Estudiante VALUES(95, \"Nombre95\");\nINSERT INTO Estudiante VALUES(96, \"Nombre96\");\nINSERT INTO Estudiante VALUES(97, \"Nombre97\");\nINSERT INTO Estudiante VALUES(98, \"Nombre98\");\nINSERT INTO Estudiante VALUES(99, \"Nombre99\");\nINSERT INTO Estudiante VALUES(100, \"Nombre100\");\nINSERT INTO Estudiante VALUES(101, \"Nombre101\");\nINSERT INTO Estudiante VALUES(102, \"Nombre102\");\nINSERT INTO Estudiante VALUES(103, \"Nombre103\");\nINSERT INTO Estudiante VALUES(104, \"Nombre104\");\nINSERT INTO Estudiante VALUES(105, \"Nombre105\");\nINSERT INTO Estudiante VALUES(106, \"Nombre106\");\nINSERT INTO Estudiante VALUES(107, \"Nombre107\");\nINSERT INTO Estudiante VALUES(108, \"Nombre108\");\nINSERT INTO Estudiante VALUES(109, \"Nombre109\");\nINSERT INTO Estudiante VALUES(110, \"Nombre110\");\nINSERT INTO Estudiante VALUES(111, \"Nombre111\");\nINSERT INTO Estudiante VALUES(112, \"Nombre112\");\nINSERT INTO Estudiante VALUES(113, \"Nombre113\");\nINSERT INTO Estudiante VALUES(114, \"Nombre114\");\nINSERT INTO Estudiante VALUES(115, \"Nombre115\");\nINSERT INTO Estudiante VALUES(116, \"Nombre116\");\nINSERT INTO Estudiante VALUES(117, \"Nombre117\");\nINSERT INTO Estudiante VALUES(118, \"Nombre118\");\nINSERT INTO Estudiante VALUES(119, \"Nombre119\");\nINSERT INTO Estudiante VALUES(120, \"Nombre120\");\nINSERT INTO Estudiante VALUES(121, \"Nombre121\");\nINSERT INTO Estudiante VALUES(122, \"Nombre122\");\nINSERT INTO Estudiante VALUES(123, \"Nombre123\");\nINSERT INTO Estudiante VALUES(124, \"Nombre124\");\nINSERT INTO Estudiante VALUES(125, \"Nombre125\");\nINSERT INTO Estudiante VALUES(126, \"Nombre126\");\nINSERT INTO Estudiante VALUES(127, \"Nombre127\");\nINSERT INTO Estudiante VALUES(128, \"Nombre128\");\nINSERT INTO Estudiante VALUES(129, \"Nombre129\");\nINSERT INTO Estudiante VALUES(130, \"Nombre130\");\nINSERT INTO Estudiante VALUES(131, \"Nombre131\");\nINSERT INTO Estudiante VALUES(132, \"Nombre132\");\nINSERT INTO Estudiante VALUES(133, \"Nombre133\");\nINSERT INTO Estudiante VALUES(134, \"Nombre134\");\nINSERT INTO Estudiante VALUES(135, \"Nombre135\");\nINSERT INTO Estudiante VALUES(136, \"Nombre136\");\nINSERT INTO Estudiante VALUES(137, \"Nombre137\");\nINSERT INTO Estudiante VALUES(138, \"Nombre138\");\nINSERT INTO Estudiante VALUES(139, \"Nombre139\");\nINSERT INTO Estudiante VALUES(140, \"Nombre140\");\nINSERT INTO Estudiante VALUES(141, \"Nombre141\");\nINSERT INTO Estudiante VALUES(142, \"Nombre142\");\nINSERT INTO Estudiante VALUES(143, \"Nombre143\");\nINSERT INTO Estudiante VALUES(144, \"Nombre144\");\nINSERT INTO Estudiante VALUES(145, \"Nombre145\");\nINSERT INTO Estudiante VALUES(146, \"Nombre146\");\nINSERT INTO Estudiante VALUES(147, \"Nombre147\");\nINSERT INTO Estudiante VALUES(148, \"Nombre148\");\nINSERT INTO Estudiante VALUES(149, \"Nombre149\");\nINSERT INTO Estudiante VALUES(150, \"Nombre150\");\nINSERT INTO Estudiante VALUES(151, \"Nombre151\");\nINSERT INTO Estudiante VALUES(152, \"Nombre152\");\nINSERT INTO Estudiante VALUES(153, \"Nombre153\");\nINSERT INTO Estudiante VALUES(154, \"Nombre154\");\nINSERT INTO Estudiante VALUES(155, \"Nombre155\");\nINSERT INTO Estudiante VALUES(156, \"Nombre156\");\nINSERT INTO Estudiante VALUES(157, \"Nombre157\");\nINSERT INTO Estudiante VALUES(158, \"Nombre158\");\nINSERT INTO Estudiante VALUES(159, \"Nombre159\");\nINSERT INTO Estudiante VALUES(160, \"Nombre160\");\nINSERT INTO Estudiante VALUES(161, \"Nombre161\");\nINSERT INTO Estudiante VALUES(162, \"Nombre162\");\nINSERT INTO Estudiante VALUES(163, \"Nombre163\");\nINSERT INTO Estudiante VALUES(164, \"Nombre164\");\nINSERT INTO Estudiante VALUES(165, \"Nombre165\");\nINSERT INTO Estudiante VALUES(166, \"Nombre166\");\nINSERT INTO Estudiante VALUES(167, \"Nombre167\");\nINSERT INTO Estudiante VALUES(168, \"Nombre168\");\nINSERT INTO Estudiante VALUES(169, \"Nombre169\");\nINSERT INTO Estudiante VALUES(170, \"Nombre170\");\nINSERT INTO Estudiante VALUES(171, \"Nombre171\");\nINSERT INTO Estudiante VALUES(172, \"Nombre172\");\nINSERT INTO Estudiante VALUES(173, \"Nombre173\");\nINSERT INTO Estudiante VALUES(174, \"Nombre174\");\nINSERT INTO Estudiante VALUES(175, \"Nombre175\");\nINSERT INTO Estudiante VALUES(176, \"Nombre176\");\nINSERT INTO Estudiante VALUES(177, \"Nombre177\");\nINSERT INTO Estudiante VALUES(178, \"Nombre178\");\nINSERT INTO Estudiante VALUES(179, \"Nombre179\");\nINSERT INTO Estudiante VALUES(180, \"Nombre180\");\nINSERT INTO Estudiante VALUES(181, \"Nombre181\");\nINSERT INTO Estudiante VALUES(182, \"Nombre182\");\nINSERT INTO Estudiante VALUES(183, \"Nombre183\");\nINSERT INTO Estudiante VALUES(184, \"Nombre184\");\nINSERT INTO Estudiante VALUES(185, \"Nombre185\");\nINSERT INTO Estudiante VALUES(186, \"Nombre186\");\nINSERT INTO Estudiante VALUES(187, \"Nombre187\");\nINSERT INTO Estudiante VALUES(188, \"Nombre188\");\nINSERT INTO Estudiante VALUES(189, \"Nombre189\");\nINSERT INTO Estudiante VALUES(190, \"Nombre190\");\nINSERT INTO Estudiante VALUES(191, \"Nombre191\");\nINSERT INTO Estudiante VALUES(192, \"Nombre192\");\nINSERT INTO Estudiante VALUES(193, \"Nombre193\");\nINSERT INTO Estudiante VALUES(194, \"Nombre194\");\nINSERT INTO Estudiante VALUES(195, \"Nombre195\");\nINSERT INTO Estudiante VALUES(196, \"Nombre196\");\nINSERT INTO Estudiante VALUES(197, \"Nombre197\");\nINSERT INTO Estudiante VALUES(198, \"Nombre198\");\nINSERT INTO Estudiante VALUES(199, \"Nombre199\");\nINSERT INTO Estudiante VALUES(200, \"Nombre200\");\nINSERT INTO Estudiante VALUES(201, \"Nombre201\");\nINSERT INTO Estudiante VALUES(202, \"Nombre202\");\nINSERT INTO Estudiante VALUES(203, \"Nombre203\");\nINSERT INTO Estudiante VALUES(204, \"Nombre204\");\nINSERT INTO Estudiante VALUES(205, \"Nombre205\");\nINSERT INTO Estudiante VALUES(206, \"Nombre206\");\nINSERT INTO Estudiante VALUES(207, \"Nombre207\");\nINSERT INTO Estudiante VALUES(208, \"Nombre208\");\nINSERT INTO Estudiante VALUES(209, \"Nombre209\");\nINSERT INTO Estudiante VALUES(210, \"Nombre210\");\nINSERT INTO Estudiante VALUES(211, \"Nombre211\");\nINSERT INTO Estudiante VALUES(212, \"Nombre212\");\nINSERT INTO Estudiante VALUES(213, \"Nombre213\");\nINSERT INTO Estudiante VALUES(214, \"Nombre214\");\nINSERT INTO Estudiante VALUES(215, \"Nombre215\");\nINSERT INTO Estudiante VALUES(216, \"Nombre216\");\nINSERT INTO Estudiante VALUES(217, \"Nombre217\");\nINSERT INTO Estudiante VALUES(218, \"Nombre218\");\nINSERT INTO Estudiante VALUES(219, \"Nombre219\");\nINSERT INTO Estudiante VALUES(220, \"Nombre220\");\nINSERT INTO Estudiante VALUES(221, \"Nombre221\");\nINSERT INTO Estudiante VALUES(222, \"Nombre222\");\nINSERT INTO Estudiante VALUES(223, \"Nombre223\");\nINSERT INTO Estudiante VALUES(224, \"Nombre224\");\nINSERT INTO Estudiante VALUES(225, \"Nombre225\");\nINSERT INTO Estudiante VALUES(226, \"Nombre226\");\nINSERT INTO Estudiante VALUES(227, \"Nombre227\");\nINSERT INTO Estudiante VALUES(228, \"Nombre228\");\nINSERT INTO Estudiante VALUES(229, \"Nombre229\");\nINSERT INTO Estudiante VALUES(230, \"Nombre230\");\nINSERT INTO Estudiante VALUES(231, \"Nombre231\");\nINSERT INTO Estudiante VALUES(232, \"Nombre232\");\nINSERT INTO Estudiante VALUES(233, \"Nombre233\");\nINSERT INTO Estudiante VALUES(234, \"Nombre234\");\nINSERT INTO Estudiante VALUES(235, \"Nombre235\");\nINSERT INTO Estudiante VALUES(236, \"Nombre236\");\nINSERT INTO Estudiante VALUES(237, \"Nombre237\");\nINSERT INTO Estudiante VALUES(238, \"Nombre238\");\nINSERT INTO Estudiante VALUES(239, \"Nombre239\");\nINSERT INTO Estudiante VALUES(240, \"Nombre240\");\nINSERT INTO Estudiante VALUES(241, \"Nombre241\");\nINSERT INTO Estudiante VALUES(242, \"Nombre242\");\nINSERT INTO Estudiante VALUES(243, \"Nombre243\");\nINSERT INTO Estudiante VALUES(244, \"Nombre244\");\nINSERT INTO Estudiante VALUES(245, \"Nombre245\");\nINSERT INTO Estudiante VALUES(246, \"Nombre246\");\nINSERT INTO Estudiante VALUES(247, \"Nombre247\");\nINSERT INTO Estudiante VALUES(248, \"Nombre248\");\nINSERT INTO Estudiante VALUES(249, \"Nombre249\");\nINSERT INTO Estudiante VALUES(250, \"Nombre250\");\nINSERT INTO Estudiante VALUES(251, \"Nombre251\");\nINSERT INTO Estudiante VALUES(252, \"Nombre252\");\nINSERT INTO Estudiante VALUES(253, \"Nombre253\");\nINSERT INTO Estudiante VALUES(254, \"Nombre254\");\nINSERT INTO Estudiante VALUES(255, \"Nombre255\");\nINSERT INTO Estudiante VALUES(256, \"Nombre256\");\nINSERT INTO Estudiante VALUES(257, \"Nombre257\");\nINSERT INTO Estudiante VALUES(258, \"Nombre258\");\nINSERT INTO Estudiante VALUES(259, \"Nombre259\");\nINSERT INTO Estudiante VALUES(260, \"Nombre260\");\nINSERT INTO Estudiante VALUES(261, \"Nombre261\");\nINSERT INTO Estudiante VALUES(262, \"Nombre262\");\nINSERT INTO Estudiante VALUES(263, \"Nombre263\");\nINSERT INTO Estudiante VALUES(264, \"Nombre264\");\nINSERT INTO Estudiante VALUES(265, \"Nombre265\");\nINSERT INTO Estudiante VALUES(266, \"Nombre266\");\nINSERT INTO Estudiante VALUES(267, \"Nombre267\");\nINSERT INTO Estudiante VALUES(268, \"Nombre268\");\nINSERT INTO Estudiante VALUES(269, \"Nombre269\");\nINSERT INTO Estudiante VALUES(270, \"Nombre270\");\nINSERT INTO Estudiante VALUES(271, \"Nombre271\");\nINSERT INTO Estudiante VALUES(272, \"Nombre272\");\nINSERT INTO Estudiante VALUES(273, \"Nombre273\");\nINSERT INTO Estudiante VALUES(274, \"Nombre274\");\nINSERT INTO Estudiante VALUES(275, \"Nombre275\");\nINSERT INTO Estudiante VALUES(276, \"Nombre276\");\nINSERT INTO Estudiante VALUES(277, \"Nombre277\");\nINSERT INTO Estudiante VALUES(278, \"Nombre278\");\nINSERT INTO Estudiante VALUES(279, \"Nombre279\");\nINSERT INTO Estudiante VALUES(280, \"Nombre280\");\nINSERT INTO Estudiante VALUES(281, \"Nombre281\");\nINSERT INTO Estudiante VALUES(282, \"Nombre282\");\nINSERT INTO Estudiante VALUES(283, \"Nombre283\");\nINSERT INTO Estudiante VALUES(284, \"Nombre284\");\nINSERT INTO Estudiante VALUES(285, \"Nombre285\");\nINSERT INTO Estudiante VALUES(286, \"Nombre286\");\nINSERT INTO Estudiante VALUES(287, \"Nombre287\");\nINSERT INTO Estudiante VALUES(288, \"Nombre288\");\nINSERT INTO Estudiante VALUES(289, \"Nombre289\");\nINSERT INTO Estudiante VALUES(290, \"Nombre290\");\nINSERT INTO Estudiante VALUES(291, \"Nombre291\");\nINSERT INTO Estudiante VALUES(292, \"Nombre292\");\nINSERT INTO Estudiante VALUES(293, \"Nombre293\");\nINSERT INTO Estudiante VALUES(294, \"Nombre294\");\nINSERT INTO Estudiante VALUES(295, \"Nombre295\");\nINSERT INTO Estudiante VALUES(296, \"Nombre296\");\nINSERT INTO Estudiante VALUES(297, \"Nombre297\");\nINSERT INTO Estudiante VALUES(298, \"Nombre298\");\nINSERT INTO Estudiante VALUES(299, \"Nombre299\");\nINSERT INTO Estudiante VALUES(300, \"Nombre300\");\nINSERT INTO Estudiante VALUES(301, \"Nombre301\");\nINSERT INTO Estudiante VALUES(302, \"Nombre302\");\nINSERT INTO Estudiante VALUES(303, \"Nombre303\");\nINSERT INTO Estudiante VALUES(304, \"Nombre304\");\nINSERT INTO Estudiante VALUES(305, \"Nombre305\");\nINSERT INTO Estudiante VALUES(306, \"Nombre306\");\nINSERT INTO Estudiante VALUES(307, \"Nombre307\");\nINSERT INTO Estudiante VALUES(308, \"Nombre308\");\nINSERT INTO Estudiante VALUES(309, \"Nombre309\");\nINSERT INTO Estudiante VALUES(310, \"Nombre310\");\nINSERT INTO Estudiante VALUES(311, \"Nombre311\");\nINSERT INTO Estudiante VALUES(312, \"Nombre312\");\nINSERT INTO Estudiante VALUES(313, \"Nombre313\");\nINSERT INTO Estudiante VALUES(314, \"Nombre314\");\nINSERT INTO Estudiante VALUES(315, \"Nombre315\");\nINSERT INTO Estudiante VALUES(316, \"Nombre316\");\nINSERT INTO Estudiante VALUES(317, \"Nombre317\");\nINSERT INTO Estudiante VALUES(318, \"Nombre318\");\nINSERT INTO Estudiante VALUES(319, \"Nombre319\");\nINSERT INTO Estudiante VALUES(320, \"Nombre320\");\nINSERT INTO Estudiante VALUES(321, \"Nombre321\");\nINSERT INTO Estudiante VALUES(322, \"Nombre322\");\nINSERT INTO Estudiante VALUES(323, \"Nombre323\");\nINSERT INTO Estudiante VALUES(324, \"Nombre324\");\nINSERT INTO Estudiante VALUES(325, \"Nombre325\");\nINSERT INTO Estudiante VALUES(326, \"Nombre326\");\nINSERT INTO Estudiante VALUES(327, \"Nombre327\");\nINSERT INTO Estudiante VALUES(328, \"Nombre328\");\nINSERT INTO Estudiante VALUES(329, \"Nombre329\");\nINSERT INTO Estudiante VALUES(330, \"Nombre330\");\nINSERT INTO Estudiante VALUES(331, \"Nombre331\");\nINSERT INTO Estudiante VALUES(332, \"Nombre332\");\nINSERT INTO Estudiante VALUES(333, \"Nombre333\");\nINSERT INTO Estudiante VALUES(334, \"Nombre334\");\nINSERT INTO Estudiante VALUES(335, \"Nombre335\");\nINSERT INTO Estudiante VALUES(336, \"Nombre336\");\nINSERT INTO Estudiante VALUES(337, \"Nombre337\");\nINSERT INTO Estudiante VALUES(338, \"Nombre338\");\nINSERT INTO Estudiante VALUES(339, \"Nombre339\");\nINSERT INTO Estudiante VALUES(340, \"Nombre340\");\nINSERT INTO Estudiante VALUES(341, \"Nombre341\");\nINSERT INTO Estudiante VALUES(342, \"Nombre342\");\nINSERT INTO Estudiante VALUES(343, \"Nombre343\");\nINSERT INTO Estudiante VALUES(344, \"Nombre344\");\nINSERT INTO Estudiante VALUES(345, \"Nombre345\");\nINSERT INTO Estudiante VALUES(346, \"Nombre346\");\nINSERT INTO Estudiante VALUES(347, \"Nombre347\");\nINSERT INTO Estudiante VALUES(348, \"Nombre348\");\nINSERT INTO Estudiante VALUES(349, \"Nombre349\");\nINSERT INTO Estudiante VALUES(350, \"Nombre350\");\nINSERT INTO Estudiante VALUES(351, \"Nombre351\");\nINSERT INTO Estudiante VALUES(352, \"Nombre352\");\nINSERT INTO Estudiante VALUES(353, \"Nombre353\");\nINSERT INTO Estudiante VALUES(354, \"Nombre354\");\nINSERT INTO Estudiante VALUES(355, \"Nombre355\");\nINSERT INTO Estudiante VALUES(356, \"Nombre356\");\nINSERT INTO Estudiante VALUES(357, \"Nombre357\");\nINSERT INTO Estudiante VALUES(358, \"Nombre358\");\nINSERT INTO Estudiante VALUES(359, \"Nombre359\");\nINSERT INTO Estudiante VALUES(360, \"Nombre360\");\nINSERT INTO Estudiante VALUES(361, \"Nombre361\");\nINSERT INTO Estudiante VALUES(362, \"Nombre362\");\nINSERT INTO Estudiante VALUES(363, \"Nombre363\");\nINSERT INTO Estudiante VALUES(364, \"Nombre364\");\nINSERT INTO Estudiante VALUES(365, \"Nombre365\");\nINSERT INTO Estudiante VALUES(366, \"Nombre366\");\nINSERT INTO Estudiante VALUES(367, \"Nombre367\");\nINSERT INTO Estudiante VALUES(368, \"Nombre368\");\nINSERT INTO Estudiante VALUES(369, \"Nombre369\");\nINSERT INTO Estudiante VALUES(370, \"Nombre370\");\nINSERT INTO Estudiante VALUES(371, \"Nombre371\");\nINSERT INTO Estudiante VALUES(372, \"Nombre372\");\nINSERT INTO Estudiante VALUES(373, \"Nombre373\");\nINSERT INTO Estudiante VALUES(374, \"Nombre374\");\nINSERT INTO Estudiante VALUES(375, \"Nombre375\");\nINSERT INTO Estudiante VALUES(376, \"Nombre376\");\nINSERT INTO Estudiante VALUES(377, \"Nombre377\");\nINSERT INTO Estudiante VALUES(378, \"Nombre378\");\nINSERT INTO Estudiante VALUES(379, \"Nombre379\");\nINSERT INTO Estudiante VALUES(380, \"Nombre380\");\nINSERT INTO Estudiante VALUES(381, \"Nombre381\");\nINSERT INTO Estudiante VALUES(382, \"Nombre382\");\nINSERT INTO Estudiante VALUES(383, \"Nombre383\");\nINSERT INTO Estudiante VALUES(384, \"Nombre384\");\nINSERT INTO Estudiante VALUES(385, \"Nombre385\");\nINSERT INTO Estudiante VALUES(386, \"Nombre386\");\nINSERT INTO Estudiante VALUES(387, \"Nombre387\");\nINSERT INTO Estudiante VALUES(388, \"Nombre388\");\nINSERT INTO Estudiante VALUES(389, \"Nombre389\");\nINSERT INTO Estudiante VALUES(390, \"Nombre390\");\nINSERT INTO Estudiante VALUES(391, \"Nombre391\");\nINSERT INTO Estudiante VALUES(392, \"Nombre392\");\nINSERT INTO Estudiante VALUES(393, \"Nombre393\");\nINSERT INTO Estudiante VALUES(394, \"Nombre394\");\nINSERT INTO Estudiante VALUES(395, \"Nombre395\");\nINSERT INTO Estudiante VALUES(396, \"Nombre396\");\nINSERT INTO Estudiante VALUES(397, \"Nombre397\");\nINSERT INTO Estudiante VALUES(398, \"Nombre398\");\nINSERT INTO Estudiante VALUES(399, \"Nombre399\");\nINSERT INTO Estudiante VALUES(400, \"Nombre400\");\nINSERT INTO Estudiante VALUES(401, \"Nombre401\");\nINSERT INTO Estudiante VALUES(402, \"Nombre402\");\nINSERT INTO Estudiante VALUES(403, \"Nombre403\");\nINSERT INTO Estudiante VALUES(404, \"Nombre404\");\nINSERT INTO Estudiante VALUES(405, \"Nombre405\");\nINSERT INTO Estudiante VALUES(406, \"Nombre406\");\nINSERT INTO Estudiante VALUES(407, \"Nombre407\");\nINSERT INTO Estudiante VALUES(408, \"Nombre408\");\nINSERT INTO Estudiante VALUES(409, \"Nombre409\");\nINSERT INTO Estudiante VALUES(410, \"Nombre410\");\nINSERT INTO Estudiante VALUES(411, \"Nombre411\");\nINSERT INTO Estudiante VALUES(412, \"Nombre412\");\nINSERT INTO Estudiante VALUES(413, \"Nombre413\");\nINSERT INTO Estudiante VALUES(414, \"Nombre414\");\nINSERT INTO Estudiante VALUES(415, \"Nombre415\");\nINSERT INTO Estudiante VALUES(416, \"Nombre416\");\nINSERT INTO Estudiante VALUES(417, \"Nombre417\");\nINSERT INTO Estudiante VALUES(418, \"Nombre418\");\nINSERT INTO Estudiante VALUES(419, \"Nombre419\");\nINSERT INTO Estudiante VALUES(420, \"Nombre420\");\nINSERT INTO Estudiante VALUES(421, \"Nombre421\");\nINSERT INTO Estudiante VALUES(422, \"Nombre422\");\nINSERT INTO Estudiante VALUES(423, \"Nombre423\");\nINSERT INTO Estudiante VALUES(424, \"Nombre424\");\nINSERT INTO Estudiante VALUES(425, \"Nombre425\");\nINSERT INTO Estudiante VALUES(426, \"Nombre426\");\nINSERT INTO Estudiante VALUES(427, \"Nombre427\");\nINSERT INTO Estudiante VALUES(428, \"Nombre428\");\nINSERT INTO Estudiante VALUES(429, \"Nombre429\");\nINSERT INTO Estudiante VALUES(430, \"Nombre430\");\nINSERT INTO Estudiante VALUES(431, \"Nombre431\");\nINSERT INTO Estudiante VALUES(432, \"Nombre432\");\nINSERT INTO Estudiante VALUES(433, \"Nombre433\");\nINSERT INTO Estudiante VALUES(434, \"Nombre434\");\nINSERT INTO Estudiante VALUES(435, \"Nombre435\");\nINSERT INTO Estudiante VALUES(436, \"Nombre436\");\nINSERT INTO Estudiante VALUES(437, \"Nombre437\");\nINSERT INTO Estudiante VALUES(438, \"Nombre438\");\nINSERT INTO Estudiante VALUES(439, \"Nombre439\");\nINSERT INTO Estudiante VALUES(440, \"Nombre440\");\nINSERT INTO Estudiante VALUES(441, \"Nombre441\");\nINSERT INTO Estudiante VALUES(442, \"Nombre442\");\nINSERT INTO Estudiante VALUES(443, \"Nombre443\");\nINSERT INTO Estudiante VALUES(444, \"Nombre444\");\nINSERT INTO Estudiante VALUES(445, \"Nombre445\");\nINSERT INTO Estudiante VALUES(446, \"Nombre446\");\nINSERT INTO Estudiante VALUES(447, \"Nombre447\");\nINSERT INTO Estudiante VALUES(448, \"Nombre448\");\nINSERT INTO Estudiante VALUES(449, \"Nombre449\");\nINSERT INTO Estudiante VALUES(450, \"Nombre450\");\nINSERT INTO Estudiante VALUES(451, \"Nombre451\");\nINSERT INTO Estudiante VALUES(452, \"Nombre452\");\nINSERT INTO Estudiante VALUES(453, \"Nombre453\");\nINSERT INTO Estudiante VALUES(454, \"Nombre454\");\nINSERT INTO Estudiante VALUES(455, \"Nombre455\");\nINSERT INTO Estudiante VALUES(456, \"Nombre456\");\nINSERT INTO Estudiante VALUES(457, \"Nombre457\");\nINSERT INTO Estudiante VALUES(458, \"Nombre458\");\nINSERT INTO Estudiante VALUES(459, \"Nombre459\");\nINSERT INTO Estudiante VALUES(460, \"Nombre460\");\nINSERT INTO Estudiante VALUES(461, \"Nombre461\");\nINSERT INTO Estudiante VALUES(462, \"Nombre462\");\nINSERT INTO Estudiante VALUES(463, \"Nombre463\");\nINSERT INTO Estudiante VALUES(464, \"Nombre464\");\nINSERT INTO Estudiante VALUES(465, \"Nombre465\");\nINSERT INTO Estudiante VALUES(466, \"Nombre466\");\nINSERT INTO Estudiante VALUES(467, \"Nombre467\");\nINSERT INTO Estudiante VALUES(468, \"Nombre468\");\nINSERT INTO Estudiante VALUES(469, \"Nombre469\");\nINSERT INTO Estudiante VALUES(470, \"Nombre470\");\nINSERT INTO Estudiante VALUES(471, \"Nombre471\");\nINSERT INTO Estudiante VALUES(472, \"Nombre472\");\nINSERT INTO Estudiante VALUES(473, \"Nombre473\");\nINSERT INTO Estudiante VALUES(474, \"Nombre474\");\nINSERT INTO Estudiante VALUES(475, \"Nombre475\");\nINSERT INTO Estudiante VALUES(476, \"Nombre476\");\nINSERT INTO Estudiante VALUES(477, \"Nombre477\");\nINSERT INTO Estudiante VALUES(478, \"Nombre478\");\nINSERT INTO Estudiante VALUES(479, \"Nombre479\");\nINSERT INTO Estudiante VALUES(480, \"Nombre480\");\nINSERT INTO Estudiante VALUES(481, \"Nombre481\");\nINSERT INTO Estudiante VALUES(482, \"Nombre482\");\nINSERT INTO Estudiante VALUES(483, \"Nombre483\");\nINSERT INTO Estudiante VALUES(484, \"Nombre484\");\nINSERT INTO Estudiante VALUES(485, \"Nombre485\");\nINSERT INTO Estudiante VALUES(486, \"Nombre486\");\nINSERT INTO Estudiante VALUES(487, \"Nombre487\");\nINSERT INTO Estudiante VALUES(488, \"Nombre488\");\nINSERT INTO Estudiante VALUES(489, \"Nombre489\");\nINSERT INTO Estudiante VALUES(490, \"Nombre490\");\nINSERT INTO Estudiante VALUES(491, \"Nombre491\");\nINSERT INTO Estudiante VALUES(492, \"Nombre492\");\nINSERT INTO Estudiante VALUES(493, \"Nombre493\");\nINSERT INTO Estudiante VALUES(494, \"Nombre494\");\nINSERT INTO Estudiante VALUES(495, \"Nombre495\");\nINSERT INTO Estudiante VALUES(496, \"Nombre496\");\nINSERT INTO Estudiante VALUES(497, \"Nombre497\");\nINSERT INTO Estudiante VALUES(498, \"Nombre498\");\nINSERT INTO Estudiante VALUES(499, \"Nombre499\");\nINSERT INTO Estudiante VALUES(500, \"Nombre500\");\nINSERT INTO Estudiante VALUES(501, \"Nombre501\");\nINSERT INTO Estudiante VALUES(502, \"Nombre502\");\nINSERT INTO Estudiante VALUES(503, \"Nombre503\");\nINSERT INTO Estudiante VALUES(504, \"Nombre504\");\nINSERT INTO Estudiante VALUES(505, \"Nombre505\");\nINSERT INTO Estudiante VALUES(506, \"Nombre506\");\nINSERT INTO Estudiante VALUES(507, \"Nombre507\");\nINSERT INTO Estudiante VALUES(508, \"Nombre508\");\nINSERT INTO Estudiante VALUES(509, \"Nombre509\");\nINSERT INTO Estudiante VALUES(510, \"Nombre510\");\nINSERT INTO Estudiante VALUES(511, \"Nombre511\");\nINSERT INTO Estudiante VALUES(512, \"Nombre512\");\nINSERT INTO Estudiante VALUES(513, \"Nombre513\");\nINSERT INTO Estudiante VALUES(514, \"Nombre514\");\nINSERT INTO Estudiante VALUES(515, \"Nombre515\");\nINSERT INTO Estudiante VALUES(516, \"Nombre516\");\nINSERT INTO Estudiante VALUES(517, \"Nombre517\");\nINSERT INTO Estudiante VALUES(518, \"Nombre518\");\nINSERT INTO Estudiante VALUES(519, \"Nombre519\");\nINSERT INTO Estudiante VALUES(520, \"Nombre520\");\nINSERT INTO Estudiante VALUES(521, \"Nombre521\");\nINSERT INTO Estudiante VALUES(522, \"Nombre522\");\nINSERT INTO Estudiante VALUES(523, \"Nombre523\");\nINSERT INTO Estudiante VALUES(524, \"Nombre524\");\nINSERT INTO Estudiante VALUES(525, \"Nombre525\");\nINSERT INTO Estudiante VALUES(526, \"Nombre526\");\nINSERT INTO Estudiante VALUES(527, \"Nombre527\");\nINSERT INTO Estudiante VALUES(528, \"Nombre528\");\nINSERT INTO Estudiante VALUES(529, \"Nombre529\");\nINSERT INTO Estudiante VALUES(530, \"Nombre530\");\nINSERT INTO Estudiante VALUES(531, \"Nombre531\");\nINSERT INTO Estudiante VALUES(532, \"Nombre532\");\nINSERT INTO Estudiante VALUES(533, \"Nombre533\");\nINSERT INTO Estudiante VALUES(534, \"Nombre534\");\nINSERT INTO Estudiante VALUES(535, \"Nombre535\");\nINSERT INTO Estudiante VALUES(536, \"Nombre536\");\nINSERT INTO Estudiante VALUES(537, \"Nombre537\");\nINSERT INTO Estudiante VALUES(538, \"Nombre538\");\nINSERT INTO Estudiante VALUES(539, \"Nombre539\");\nINSERT INTO Estudiante VALUES(540, \"Nombre540\");\nINSERT INTO Estudiante VALUES(541, \"Nombre541\");\nINSERT INTO Estudiante VALUES(542, \"Nombre542\");\nINSERT INTO Estudiante VALUES(543, \"Nombre543\");\nINSERT INTO Estudiante VALUES(544, \"Nombre544\");\nINSERT INTO Estudiante VALUES(545, \"Nombre545\");\nINSERT INTO Estudiante VALUES(546, \"Nombre546\");\nINSERT INTO Estudiante VALUES(547, \"Nombre547\");\nINSERT INTO Estudiante VALUES(548, \"Nombre548\");\nINSERT INTO Estudiante VALUES(549, \"Nombre549\");\nINSERT INTO Estudiante VALUES(550, \"Nombre550\");\nINSERT INTO Estudiante VALUES(551, \"Nombre551\");\nINSERT INTO Estudiante VALUES(552, \"Nombre552\");\nINSERT INTO Estudiante VALUES(553, \"Nombre553\");\nINSERT INTO Estudiante VALUES(554, \"Nombre554\");\nINSERT INTO Estudiante VALUES(555, \"Nombre555\");\nINSERT INTO Estudiante VALUES(556, \"Nombre556\");\nINSERT INTO Estudiante VALUES(557, \"Nombre557\");\nINSERT INTO Estudiante VALUES(558, \"Nombre558\");\nINSERT INTO Estudiante VALUES(559, \"Nombre559\");\nINSERT INTO Estudiante VALUES(560, \"Nombre560\");\nINSERT INTO Estudiante VALUES(561, \"Nombre561\");\nINSERT INTO Estudiante VALUES(562, \"Nombre562\");\nINSERT INTO Estudiante VALUES(563, \"Nombre563\");\nINSERT INTO Estudiante VALUES(564, \"Nombre564\");\nINSERT INTO Estudiante VALUES(565, \"Nombre565\");\nINSERT INTO Estudiante VALUES(566, \"Nombre566\");\nINSERT INTO Estudiante VALUES(567, \"Nombre567\");\nINSERT INTO Estudiante VALUES(568, \"Nombre568\");\nINSERT INTO Estudiante VALUES(569, \"Nombre569\");\nINSERT INTO Estudiante VALUES(570, \"Nombre570\");\nINSERT INTO Estudiante VALUES(571, \"Nombre571\");\nINSERT INTO Estudiante VALUES(572, \"Nombre572\");\nINSERT INTO Estudiante VALUES(573, \"Nombre573\");\nINSERT INTO Estudiante VALUES(574, \"Nombre574\");\nINSERT INTO Estudiante VALUES(575, \"Nombre575\");\nINSERT INTO Estudiante VALUES(576, \"Nombre576\");\nINSERT INTO Estudiante VALUES(577, \"Nombre577\");\nINSERT INTO Estudiante VALUES(578, \"Nombre578\");\nINSERT INTO Estudiante VALUES(579, \"Nombre579\");\nINSERT INTO Estudiante VALUES(580, \"Nombre580\");\nINSERT INTO Estudiante VALUES(581, \"Nombre581\");\nINSERT INTO Estudiante VALUES(582, \"Nombre582\");\nINSERT INTO Estudiante VALUES(583, \"Nombre583\");\nINSERT INTO Estudiante VALUES(584, \"Nombre584\");\nINSERT INTO Estudiante VALUES(585, \"Nombre585\");\nINSERT INTO Estudiante VALUES(586, \"Nombre586\");\nINSERT INTO Estudiante VALUES(587, \"Nombre587\");\nINSERT INTO Estudiante VALUES(588, \"Nombre588\");\nINSERT INTO Estudiante VALUES(589, \"Nombre589\");\nINSERT INTO Estudiante VALUES(590, \"Nombre590\");\nINSERT INTO Estudiante VALUES(591, \"Nombre591\");\nINSERT INTO Estudiante VALUES(592, \"Nombre592\");\nINSERT INTO Estudiante VALUES(593, \"Nombre593\");\nINSERT INTO Estudiante VALUES(594, \"Nombre594\");\nINSERT INTO Estudiante VALUES(595, \"Nombre595\");\nINSERT INTO Estudiante VALUES(596, \"Nombre596\");\nINSERT INTO Estudiante VALUES(597, \"Nombre597\");\nINSERT INTO Estudiante VALUES(598, \"Nombre598\");\nINSERT INTO Estudiante VALUES(599, \"Nombre599\");\nINSERT INTO Estudiante VALUES(600, \"Nombre600\");\nINSERT INTO Estudiante VALUES(601, \"Nombre601\");\nINSERT INTO Estudiante VALUES(602, \"Nombre602\");\nINSERT INTO Estudiante VALUES(603, \"Nombre603\");\nINSERT INTO Estudiante VALUES(604, \"Nombre604\");\nINSERT INTO Estudiante VALUES(605, \"Nombre605\");\nINSERT INTO Estudiante VALUES(606, \"Nombre606\");\nINSERT INTO Estudiante VALUES(607, \"Nombre607\");\nINSERT INTO Estudiante VALUES(608, \"Nombre608\");\nINSERT INTO Estudiante VALUES(609, \"Nombre609\");\nINSERT INTO Estudiante VALUES(610, \"Nombre610\");\nINSERT INTO Estudiante VALUES(611, \"Nombre611\");\nINSERT INTO Estudiante VALUES(612, \"Nombre612\");\nINSERT INTO Estudiante VALUES(613, \"Nombre613\");\nINSERT INTO Estudiante VALUES(614, \"Nombre614\");\nINSERT INTO Estudiante VALUES(615, \"Nombre615\");\nINSERT INTO Estudiante VALUES(616, \"Nombre616\");\nINSERT INTO Estudiante VALUES(617, \"Nombre617\");\nINSERT INTO Estudiante VALUES(618, \"Nombre618\");\nINSERT INTO Estudiante VALUES(619, \"Nombre619\");\nINSERT INTO Estudiante VALUES(620, \"Nombre620\");\nINSERT INTO Estudiante VALUES(621, \"Nombre621\");\nINSERT INTO Estudiante VALUES(622, \"Nombre622\");\nINSERT INTO Estudiante VALUES(623, \"Nombre623\");\nINSERT INTO Estudiante VALUES(624, \"Nombre624\");\nINSERT INTO Estudiante VALUES(625, \"Nombre625\");\nINSERT INTO Estudiante VALUES(626, \"Nombre626\");\nINSERT INTO Estudiante VALUES(627, \"Nombre627\");\nINSERT INTO Estudiante VALUES(628, \"Nombre628\");\nINSERT INTO Estudiante VALUES(629, \"Nombre629\");\nINSERT INTO Estudiante VALUES(630, \"Nombre630\");\nINSERT INTO Estudiante VALUES(631, \"Nombre631\");\nINSERT INTO Estudiante VALUES(632, \"Nombre632\");\nINSERT INTO Estudiante VALUES(633, \"Nombre633\");\nINSERT INTO Estudiante VALUES(634, \"Nombre634\");\nINSERT INTO Estudiante VALUES(635, \"Nombre635\");\nINSERT INTO Estudiante VALUES(636, \"Nombre636\");\nINSERT INTO Estudiante VALUES(637, \"Nombre637\");\nINSERT INTO Estudiante VALUES(638, \"Nombre638\");\nINSERT INTO Estudiante VALUES(639, \"Nombre639\");\nINSERT INTO Estudiante VALUES(640, \"Nombre640\");\nINSERT INTO Estudiante VALUES(641, \"Nombre641\");\nINSERT INTO Estudiante VALUES(642, \"Nombre642\");\nINSERT INTO Estudiante VALUES(643, \"Nombre643\");\nINSERT INTO Estudiante VALUES(644, \"Nombre644\");\nINSERT INTO Estudiante VALUES(645, \"Nombre645\");\nINSERT INTO Estudiante VALUES(646, \"Nombre646\");\nINSERT INTO Estudiante VALUES(647, \"Nombre647\");\nINSERT INTO Estudiante VALUES(648, \"Nombre648\");\nINSERT INTO Estudiante VALUES(649, \"Nombre649\");\nINSERT INTO Estudiante VALUES(650, \"Nombre650\");\nINSERT INTO Estudiante VALUES(651, \"Nombre651\");\nINSERT INTO Estudiante VALUES(652, \"Nombre652\");\nINSERT INTO Estudiante VALUES(653, \"Nombre653\");\nINSERT INTO Estudiante VALUES(654, \"Nombre654\");\nINSERT INTO Estudiante VALUES(655, \"Nombre655\");\nINSERT INTO Estudiante VALUES(656, \"Nombre656\");\nINSERT INTO Estudiante VALUES(657, \"Nombre657\");\nINSERT INTO Estudiante VALUES(658, \"Nombre658\");\nINSERT INTO Estudiante VALUES(659, \"Nombre659\");\nINSERT INTO Estudiante VALUES(660, \"Nombre660\");\nINSERT INTO Estudiante VALUES(661, \"Nombre661\");\nINSERT INTO Estudiante VALUES(662, \"Nombre662\");\nINSERT INTO Estudiante VALUES(663, \"Nombre663\");\nINSERT INTO Estudiante VALUES(664, \"Nombre664\");\nINSERT INTO Estudiante VALUES(665, \"Nombre665\");\nINSERT INTO Estudiante VALUES(666, \"Nombre666\");\nINSERT INTO Estudiante VALUES(667, \"Nombre667\");\nINSERT INTO Estudiante VALUES(668, \"Nombre668\");\nINSERT INTO Estudiante VALUES(669, \"Nombre669\");\nINSERT INTO Estudiante VALUES(670, \"Nombre670\");\nINSERT INTO Estudiante VALUES(671, \"Nombre671\");\nINSERT INTO Estudiante VALUES(672, \"Nombre672\");\nINSERT INTO Estudiante VALUES(673, \"Nombre673\");\nINSERT INTO Estudiante VALUES(674, \"Nombre674\");\nINSERT INTO Estudiante VALUES(675, \"Nombre675\");\nINSERT INTO Estudiante VALUES(676, \"Nombre676\");\nINSERT INTO Estudiante VALUES(677, \"Nombre677\");\nINSERT INTO Estudiante VALUES(678, \"Nombre678\");\nINSERT INTO Estudiante VALUES(679, \"Nombre679\");\nINSERT INTO Estudiante VALUES(680, \"Nombre680\");\nINSERT INTO Estudiante VALUES(681, \"Nombre681\");\nINSERT INTO Estudiante VALUES(682, \"Nombre682\");\nINSERT INTO Estudiante VALUES(683, \"Nombre683\");\nINSERT INTO Estudiante VALUES(684, \"Nombre684\");\nINSERT INTO Estudiante VALUES(685, \"Nombre685\");\nINSERT INTO Estudiante VALUES(686, \"Nombre686\");\nINSERT INTO Estudiante VALUES(687, \"Nombre687\");\nINSERT INTO Estudiante VALUES(688, \"Nombre688\");\nINSERT INTO Estudiante VALUES(689, \"Nombre689\");\nINSERT INTO Estudiante VALUES(690, \"Nombre690\");\nINSERT INTO Estudiante VALUES(691, \"Nombre691\");\nINSERT INTO Estudiante VALUES(692, \"Nombre692\");\nINSERT INTO Estudiante VALUES(693, \"Nombre693\");\nINSERT INTO Estudiante VALUES(694, \"Nombre694\");\nINSERT INTO Estudiante VALUES(695, \"Nombre695\");\nINSERT INTO Estudiante VALUES(696, \"Nombre696\");\nINSERT INTO Estudiante VALUES(697, \"Nombre697\");\nINSERT INTO Estudiante VALUES(698, \"Nombre698\");\nINSERT INTO Estudiante VALUES(699, \"Nombre699\");\nINSERT INTO Estudiante VALUES(700, \"Nombre700\");\nINSERT INTO Estudiante VALUES(701, \"Nombre701\");\nINSERT INTO Estudiante VALUES(702, \"Nombre702\");\nINSERT INTO Estudiante VALUES(703, \"Nombre703\");\nINSERT INTO Estudiante VALUES(704, \"Nombre704\");\nINSERT INTO Estudiante VALUES(705, \"Nombre705\");\nINSERT INTO Estudiante VALUES(706, \"Nombre706\");\nINSERT INTO Estudiante VALUES(707, \"Nombre707\");\nINSERT INTO Estudiante VALUES(708, \"Nombre708\");\nINSERT INTO Estudiante VALUES(709, \"Nombre709\");\nINSERT INTO Estudiante VALUES(710, \"Nombre710\");\nINSERT INTO Estudiante VALUES(711, \"Nombre711\");\nINSERT INTO Estudiante VALUES(712, \"Nombre712\");\nINSERT INTO Estudiante VALUES(713, \"Nombre713\");\nINSERT INTO Estudiante VALUES(714, \"Nombre714\");\nINSERT INTO Estudiante VALUES(715, \"Nombre715\");\nINSERT INTO Estudiante VALUES(716, \"Nombre716\");\nINSERT INTO Estudiante VALUES(717, \"Nombre717\");\nINSERT INTO Estudiante VALUES(718, \"Nombre718\");\nINSERT INTO Estudiante VALUES(719, \"Nombre719\");\nINSERT INTO Estudiante VALUES(720, \"Nombre720\");\nINSERT INTO Estudiante VALUES(721, \"Nombre721\");\nINSERT INTO Estudiante VALUES(722, \"Nombre722\");\nINSERT INTO Estudiante VALUES(723, \"Nombre723\");\nINSERT INTO Estudiante VALUES(724, \"Nombre724\");\nINSERT INTO Estudiante VALUES(725, \"Nombre725\");\nINSERT INTO Estudiante VALUES(726, \"Nombre726\");\nINSERT INTO Estudiante VALUES(727, \"Nombre727\");\nINSERT INTO Estudiante VALUES(728, \"Nombre728\");\nINSERT INTO Estudiante VALUES(729, \"Nombre729\");\nINSERT INTO Estudiante VALUES(730, \"Nombre730\");\nINSERT INTO Estudiante VALUES(731, \"Nombre731\");\nINSERT INTO Estudiante VALUES(732, \"Nombre732\");\nINSERT INTO Estudiante VALUES(733, \"Nombre733\");\nINSERT INTO Estudiante VALUES(734, \"Nombre734\");\nINSERT INTO Estudiante VALUES(735, \"Nombre735\");\nINSERT INTO Estudiante VALUES(736, \"Nombre736\");\nINSERT INTO Estudiante VALUES(737, \"Nombre737\");\nINSERT INTO Estudiante VALUES(738, \"Nombre738\");\nINSERT INTO Estudiante VALUES(739, \"Nombre739\");\nINSERT INTO Estudiante VALUES(740, \"Nombre740\");\nINSERT INTO Estudiante VALUES(741, \"Nombre741\");\nINSERT INTO Estudiante VALUES(742, \"Nombre742\");\nINSERT INTO Estudiante VALUES(743, \"Nombre743\");\nINSERT INTO Estudiante VALUES(744, \"Nombre744\");\nINSERT INTO Estudiante VALUES(745, \"Nombre745\");\nINSERT INTO Estudiante VALUES(746, \"Nombre746\");\nINSERT INTO Estudiante VALUES(747, \"Nombre747\");\nINSERT INTO Estudiante VALUES(748, \"Nombre748\");\nINSERT INTO Estudiante VALUES(749, \"Nombre749\");\nINSERT INTO Estudiante VALUES(750, \"Nombre750\");\nINSERT INTO Estudiante VALUES(751, \"Nombre751\");\nINSERT INTO Estudiante VALUES(752, \"Nombre752\");\nINSERT INTO Estudiante VALUES(753, \"Nombre753\");\nINSERT INTO Estudiante VALUES(754, \"Nombre754\");\nINSERT INTO Estudiante VALUES(755, \"Nombre755\");\nINSERT INTO Estudiante VALUES(756, \"Nombre756\");\nINSERT INTO Estudiante VALUES(757, \"Nombre757\");\nINSERT INTO Estudiante VALUES(758, \"Nombre758\");\nINSERT INTO Estudiante VALUES(759, \"Nombre759\");\nINSERT INTO Estudiante VALUES(760, \"Nombre760\");\nINSERT INTO Estudiante VALUES(761, \"Nombre761\");\nINSERT INTO Estudiante VALUES(762, \"Nombre762\");\nINSERT INTO Estudiante VALUES(763, \"Nombre763\");\nINSERT INTO Estudiante VALUES(764, \"Nombre764\");\nINSERT INTO Estudiante VALUES(765, \"Nombre765\");\nINSERT INTO Estudiante VALUES(766, \"Nombre766\");\nINSERT INTO Estudiante VALUES(767, \"Nombre767\");\nINSERT INTO Estudiante VALUES(768, \"Nombre768\");\nINSERT INTO Estudiante VALUES(769, \"Nombre769\");\nINSERT INTO Estudiante VALUES(770, \"Nombre770\");\nINSERT INTO Estudiante VALUES(771, \"Nombre771\");\nINSERT INTO Estudiante VALUES(772, \"Nombre772\");\nINSERT INTO Estudiante VALUES(773, \"Nombre773\");\nINSERT INTO Estudiante VALUES(774, \"Nombre774\");\nINSERT INTO Estudiante VALUES(775, \"Nombre775\");\nINSERT INTO Estudiante VALUES(776, \"Nombre776\");\nINSERT INTO Estudiante VALUES(777, \"Nombre777\");\nINSERT INTO Estudiante VALUES(778, \"Nombre778\");\nINSERT INTO Estudiante VALUES(779, \"Nombre779\");\nINSERT INTO Estudiante VALUES(780, \"Nombre780\");\nINSERT INTO Estudiante VALUES(781, \"Nombre781\");\nINSERT INTO Estudiante VALUES(782, \"Nombre782\");\nINSERT INTO Estudiante VALUES(783, \"Nombre783\");\nINSERT INTO Estudiante VALUES(784, \"Nombre784\");\nINSERT INTO Estudiante VALUES(785, \"Nombre785\");\nINSERT INTO Estudiante VALUES(786, \"Nombre786\");\nINSERT INTO Estudiante VALUES(787, \"Nombre787\");\nINSERT INTO Estudiante VALUES(788, \"Nombre788\");\nINSERT INTO Estudiante VALUES(789, \"Nombre789\");\nINSERT INTO Estudiante VALUES(790, \"Nombre790\");\nINSERT INTO Estudiante VALUES(791, \"Nombre791\");\nINSERT INTO Estudiante VALUES(792, \"Nombre792\");\nINSERT INTO Estudiante VALUES(793, \"Nombre793\");\nINSERT INTO Estudiante VALUES(794, \"Nombre794\");\nINSERT INTO Estudiante VALUES(795, \"Nombre795\");\nINSERT INTO Estudiante VALUES(796, \"Nombre796\");\nINSERT INTO Estudiante VALUES(797, \"Nombre797\");\nINSERT INTO Estudiante VALUES(798, \"Nombre798\");\nINSERT INTO Estudiante VALUES(799, \"Nombre799\");\nINSERT INTO Estudiante VALUES(800, \"Nombre800\");\nINSERT INTO Estudiante VALUES(801, \"Nombre801\");\nINSERT INTO Estudiante VALUES(802, \"Nombre802\");\nINSERT INTO Estudiante VALUES(803, \"Nombre803\");\nINSERT INTO Estudiante VALUES(804, \"Nombre804\");\nINSERT INTO Estudiante VALUES(805, \"Nombre805\");\nINSERT INTO Estudiante VALUES(806, \"Nombre806\");\nINSERT INTO Estudiante VALUES(807, \"Nombre807\");\nINSERT INTO Estudiante VALUES(808, \"Nombre808\");\nINSERT INTO Estudiante VALUES(809, \"Nombre809\");\nINSERT INTO Estudiante VALUES(810, \"Nombre810\");\nINSERT INTO Estudiante VALUES(811, \"Nombre811\");\nINSERT INTO Estudiante VALUES(812, \"Nombre812\");\nINSERT INTO Estudiante VALUES(813, \"Nombre813\");\nINSERT INTO Estudiante VALUES(814, \"Nombre814\");\nINSERT INTO Estudiante VALUES(815, \"Nombre815\");\nINSERT INTO Estudiante VALUES(816, \"Nombre816\");\nINSERT INTO Estudiante VALUES(817, \"Nombre817\");\nINSERT INTO Estudiante VALUES(818, \"Nombre818\");\nINSERT INTO Estudiante VALUES(819, \"Nombre819\");\nINSERT INTO Estudiante VALUES(820, \"Nombre820\");\nINSERT INTO Estudiante VALUES(821, \"Nombre821\");\nINSERT INTO Estudiante VALUES(822, \"Nombre822\");\nINSERT INTO Estudiante VALUES(823, \"Nombre823\");\nINSERT INTO Estudiante VALUES(824, \"Nombre824\");\nINSERT INTO Estudiante VALUES(825, \"Nombre825\");\nINSERT INTO Estudiante VALUES(826, \"Nombre826\");\nINSERT INTO Estudiante VALUES(827, \"Nombre827\");\nINSERT INTO Estudiante VALUES(828, \"Nombre828\");\nINSERT INTO Estudiante VALUES(829, \"Nombre829\");\nINSERT INTO Estudiante VALUES(830, \"Nombre830\");\nINSERT INTO Estudiante VALUES(831, \"Nombre831\");\nINSERT INTO Estudiante VALUES(832, \"Nombre832\");\nINSERT INTO Estudiante VALUES(833, \"Nombre833\");\nINSERT INTO Estudiante VALUES(834, \"Nombre834\");\nINSERT INTO Estudiante VALUES(835, \"Nombre835\");\nINSERT INTO Estudiante VALUES(836, \"Nombre836\");\nINSERT INTO Estudiante VALUES(837, \"Nombre837\");\nINSERT INTO Estudiante VALUES(838, \"Nombre838\");\nINSERT INTO Estudiante VALUES(839, \"Nombre839\");\nINSERT INTO Estudiante VALUES(840, \"Nombre840\");\nINSERT INTO Estudiante VALUES(841, \"Nombre841\");\nINSERT INTO Estudiante VALUES(842, \"Nombre842\");\nINSERT INTO Estudiante VALUES(843, \"Nombre843\");\nINSERT INTO Estudiante VALUES(844, \"Nombre844\");\nINSERT INTO Estudiante VALUES(845, \"Nombre845\");\nINSERT INTO Estudiante VALUES(846, \"Nombre846\");\nINSERT INTO Estudiante VALUES(847, \"Nombre847\");\nINSERT INTO Estudiante VALUES(848, \"Nombre848\");\nINSERT INTO Estudiante VALUES(849, \"Nombre849\");\nINSERT INTO Estudiante VALUES(850, \"Nombre850\");\nINSERT INTO Estudiante VALUES(851, \"Nombre851\");\nINSERT INTO Estudiante VALUES(852, \"Nombre852\");\nINSERT INTO Estudiante VALUES(853, \"Nombre853\");\nINSERT INTO Estudiante VALUES(854, \"Nombre854\");\nINSERT INTO Estudiante VALUES(855, \"Nombre855\");\nINSERT INTO Estudiante VALUES(856, \"Nombre856\");\nINSERT INTO Estudiante VALUES(857, \"Nombre857\");\nINSERT INTO Estudiante VALUES(858, \"Nombre858\");\nINSERT INTO Estudiante VALUES(859, \"Nombre859\");\nINSERT INTO Estudiante VALUES(860, \"Nombre860\");\nINSERT INTO Estudiante VALUES(861, \"Nombre861\");\nINSERT INTO Estudiante VALUES(862, \"Nombre862\");\nINSERT INTO Estudiante VALUES(863, \"Nombre863\");\nINSERT INTO Estudiante VALUES(864, \"Nombre864\");\nINSERT INTO Estudiante VALUES(865, \"Nombre865\");\nINSERT INTO Estudiante VALUES(866, \"Nombre866\");\nINSERT INTO Estudiante VALUES(867, \"Nombre867\");\nINSERT INTO Estudiante VALUES(868, \"Nombre868\");\nINSERT INTO Estudiante VALUES(869, \"Nombre869\");\nINSERT INTO Estudiante VALUES(870, \"Nombre870\");\nINSERT INTO Estudiante VALUES(871, \"Nombre871\");\nINSERT INTO Estudiante VALUES(872, \"Nombre872\");\nINSERT INTO Estudiante VALUES(873, \"Nombre873\");\nINSERT INTO Estudiante VALUES(874, \"Nombre874\");\nINSERT INTO Estudiante VALUES(875, \"Nombre875\");\nINSERT INTO Estudiante VALUES(876, \"Nombre876\");\nINSERT INTO Estudiante VALUES(877, \"Nombre877\");\nINSERT INTO Estudiante VALUES(878, \"Nombre878\");\nINSERT INTO Estudiante VALUES(879, \"Nombre879\");\nINSERT INTO Estudiante VALUES(880, \"Nombre880\");\nINSERT INTO Estudiante VALUES(881, \"Nombre881\");\nINSERT INTO Estudiante VALUES(882, \"Nombre882\");\nINSERT INTO Estudiante VALUES(883, \"Nombre883\");\nINSERT INTO Estudiante VALUES(884, \"Nombre884\");\nINSERT INTO Estudiante VALUES(885, \"Nombre885\");\nINSERT INTO Estudiante VALUES(886, \"Nombre886\");\nINSERT INTO Estudiante VALUES(887, \"Nombre887\");\nINSERT INTO Estudiante VALUES(888, \"Nombre888\");\nINSERT INTO Estudiante VALUES(889, \"Nombre889\");\nINSERT INTO Estudiante VALUES(890, \"Nombre890\");\nINSERT INTO Estudiante VALUES(891, \"Nombre891\");\nINSERT INTO Estudiante VALUES(892, \"Nombre892\");\nINSERT INTO Estudiante VALUES(893, \"Nombre893\");\nINSERT INTO Estudiante VALUES(894, \"Nombre894\");\nINSERT INTO Estudiante VALUES(895, \"Nombre895\");\nINSERT INTO Estudiante VALUES(896, \"Nombre896\");\nINSERT INTO Estudiante VALUES(897, \"Nombre897\");\nINSERT INTO Estudiante VALUES(898, \"Nombre898\");\nINSERT INTO Estudiante VALUES(899, \"Nombre899\");\nINSERT INTO Estudiante VALUES(900, \"Nombre900\");\nINSERT INTO Estudiante VALUES(901, \"Nombre901\");\nINSERT INTO Estudiante VALUES(902, \"Nombre902\");\nINSERT INTO Estudiante VALUES(903, \"Nombre903\");\nINSERT INTO Estudiante VALUES(904, \"Nombre904\");\nINSERT INTO Estudiante VALUES(905, \"Nombre905\");\nINSERT INTO Estudiante VALUES(906, \"Nombre906\");\nINSERT INTO Estudiante VALUES(907, \"Nombre907\");\nINSERT INTO Estudiante VALUES(908, \"Nombre908\");\nINSERT INTO Estudiante VALUES(909, \"Nombre909\");\nINSERT INTO Estudiante VALUES(910, \"Nombre910\");\nINSERT INTO Estudiante VALUES(911, \"Nombre911\");\nINSERT INTO Estudiante VALUES(912, \"Nombre912\");\nINSERT INTO Estudiante VALUES(913, \"Nombre913\");\nINSERT INTO Estudiante VALUES(914, \"Nombre914\");\nINSERT INTO Estudiante VALUES(915, \"Nombre915\");\nINSERT INTO Estudiante VALUES(916, \"Nombre916\");\nINSERT INTO Estudiante VALUES(917, \"Nombre917\");\nINSERT INTO Estudiante VALUES(918, \"Nombre918\");\nINSERT INTO Estudiante VALUES(919, \"Nombre919\");\nINSERT INTO Estudiante VALUES(920, \"Nombre920\");\nINSERT INTO Estudiante VALUES(921, \"Nombre921\");\nINSERT INTO Estudiante VALUES(922, \"Nombre922\");\nINSERT INTO Estudiante VALUES(923, \"Nombre923\");\nINSERT INTO Estudiante VALUES(924, \"Nombre924\");\nINSERT INTO Estudiante VALUES(925, \"Nombre925\");\nINSERT INTO Estudiante VALUES(926, \"Nombre926\");\nINSERT INTO Estudiante VALUES(927, \"Nombre927\");\nINSERT INTO Estudiante VALUES(928, \"Nombre928\");\nINSERT INTO Estudiante VALUES(929, \"Nombre929\");\nINSERT INTO Estudiante VALUES(930, \"Nombre930\");\nINSERT INTO Estudiante VALUES(931, \"Nombre931\");\nINSERT INTO Estudiante VALUES(932, \"Nombre932\");\nINSERT INTO Estudiante VALUES(933, \"Nombre933\");\nINSERT INTO Estudiante VALUES(934, \"Nombre934\");\nINSERT INTO Estudiante VALUES(935, \"Nombre935\");\nINSERT INTO Estudiante VALUES(936, \"Nombre936\");\nINSERT INTO Estudiante VALUES(937, \"Nombre937\");\nINSERT INTO Estudiante VALUES(938, \"Nombre938\");\nINSERT INTO Estudiante VALUES(939, \"Nombre939\");\nINSERT INTO Estudiante VALUES(940, \"Nombre940\");\nINSERT INTO Estudiante VALUES(941, \"Nombre941\");\nINSERT INTO Estudiante VALUES(942, \"Nombre942\");\nINSERT INTO Estudiante VALUES(943, \"Nombre943\");\nINSERT INTO Estudiante VALUES(944, \"Nombre944\");\nINSERT INTO Estudiante VALUES(945, \"Nombre945\");\nINSERT INTO Estudiante VALUES(946, \"Nombre946\");\nINSERT INTO Estudiante VALUES(947, \"Nombre947\");\nINSERT INTO Estudiante VALUES(948, \"Nombre948\");\nINSERT INTO Estudiante VALUES(949, \"Nombre949\");\nINSERT INTO Estudiante VALUES(950, \"Nombre950\");\nINSERT INTO Estudiante VALUES(951, \"Nombre951\");\nINSERT INTO Estudiante VALUES(952, \"Nombre952\");\nINSERT INTO Estudiante VALUES(953, \"Nombre953\");\nINSERT INTO Estudiante VALUES(954, \"Nombre954\");\nINSERT INTO Estudiante VALUES(955, \"Nombre955\");\nINSERT INTO Estudiante VALUES(956, \"Nombre956\");\nINSERT INTO Estudiante VALUES(957, \"Nombre957\");\nINSERT INTO Estudiante VALUES(958, \"Nombre958\");\nINSERT INTO Estudiante VALUES(959, \"Nombre959\");\nINSERT INTO Estudiante VALUES(960, \"Nombre960\");\nINSERT INTO Estudiante VALUES(961, \"Nombre961\");\nINSERT INTO Estudiante VALUES(962, \"Nombre962\");\nINSERT INTO Estudiante VALUES(963, \"Nombre963\");\nINSERT INTO Estudiante VALUES(964, \"Nombre964\");\nINSERT INTO Estudiante VALUES(965, \"Nombre965\");\nINSERT INTO Estudiante VALUES(966, \"Nombre966\");\nINSERT INTO Estudiante VALUES(967, \"Nombre967\");\nINSERT INTO Estudiante VALUES(968, \"Nombre968\");\nINSERT INTO Estudiante VALUES(969, \"Nombre969\");\nINSERT INTO Estudiante VALUES(970, \"Nombre970\");\nINSERT INTO Estudiante VALUES(971, \"Nombre971\");\nINSERT INTO Estudiante VALUES(972, \"Nombre972\");\nINSERT INTO Estudiante VALUES(973, \"Nombre973\");\nINSERT INTO Estudiante VALUES(974, \"Nombre974\");\nINSERT INTO Estudiante VALUES(975, \"Nombre975\");\nINSERT INTO Estudiante VALUES(976, \"Nombre976\");\nINSERT INTO Estudiante VALUES(977, \"Nombre977\");\nINSERT INTO Estudiante VALUES(978, \"Nombre978\");\nINSERT INTO Estudiante VALUES(979, \"Nombre979\");\nINSERT INTO Estudiante VALUES(980, \"Nombre980\");\nINSERT INTO Estudiante VALUES(981, \"Nombre981\");\nINSERT INTO Estudiante VALUES(982, \"Nombre982\");\nINSERT INTO Estudiante VALUES(983, \"Nombre983\");\nINSERT INTO Estudiante VALUES(984, \"Nombre984\");\nINSERT INTO Estudiante VALUES(985, \"Nombre985\");\nINSERT INTO Estudiante VALUES(986, \"Nombre986\");\nINSERT INTO Estudiante VALUES(987, \"Nombre987\");\nINSERT INTO Estudiante VALUES(988, \"Nombre988\");\nINSERT INTO Estudiante VALUES(989, \"Nombre989\");\nINSERT INTO Estudiante VALUES(990, \"Nombre990\");\nINSERT INTO Estudiante VALUES(991, \"Nombre991\");\nINSERT INTO Estudiante VALUES(992, \"Nombre992\");\nINSERT INTO Estudiante VALUES(993, \"Nombre993\");\nINSERT INTO Estudiante VALUES(994, \"Nombre994\");\nINSERT INTO Estudiante VALUES(995, \"Nombre995\");\nINSERT INTO Estudiante VALUES(996, \"Nombre996\");\nINSERT INTO Estudiante VALUES(997, \"Nombre997\");\nINSERT INTO Estudiante VALUES(998, \"Nombre998\");\nINSERT INTO Estudiante VALUES(999, \"Nombre999\");\nINSERT INTO Estudiante VALUES(1000, \"Nombre1000\");\nCREATE INDEX IDX_Estudiante_ID_BST ON Estudiante(ID) OF TYPE BST;\n\nSELECT * FROM Estudiante WHERE ID = 900;\nSELECT * FROM Estudiante WHERE ID = 901;\nSELECT * FROM Estudiante WHERE ID = 902;\nSELECT * FROM Estudiante WHERE ID = 903;\nSELECT * FROM Estudiante WHERE ID = 904;\nSELECT * FROM Estudiante WHERE ID = 905;\nSELECT * FROM Estudiante WHERE ID = 906;\nSELECT * FROM Estudiante WHERE ID = 907;\nSELECT * FROM Estudiante WHERE ID = 908;\nSELECT * FROM Estudiante WHERE ID = 909;\nSELECT * FROM Estudiante WHERE ID = 910;\nSELECT * FROM Estudiante WHERE ID = 911;\nSELECT * FROM Estudiante WHERE ID = 912;\nSELECT * FROM Estudiante WHERE ID = 913;\nSELECT * FROM Estudiante WHERE ID = 914;\nSELECT * FROM Estudiante WHERE ID = 915;\nSELECT * FROM Estudiante WHERE ID = 916;\nSELECT * FROM Estudiante WHERE ID = 917;\nSELECT * FROM Estudiante WHERE ID = 918;\nSELECT * FROM Estudiante WHERE ID = 919;\nSELECT * FROM Estudiante WHERE ID = 920;\nSELECT * FROM Estudiante WHERE ID = 921;\nSELECT * FROM Estudiante WHERE ID = 922;\nSELECT * FROM Estudiante WHERE ID = 923;\nSELECT * FROM Estudiante WHERE ID = 924;\nSELECT * FROM Estudiante WHERE ID = 925;\nSELECT * FROM Estudiante WHERE ID = 926;\nSELECT * FROM Estudiante WHERE ID = 927;\nSELECT * FROM Estudiante WHERE ID = 928;\nSELECT * FROM Estudiante WHERE ID = 929;\nSELECT * FROM Estudiante WHERE ID = 930;\nSELECT * FROM Estudiante WHERE ID = 931;\nSELECT * FROM Estudiante WHERE ID = 932;\nSELECT * FROM Estudiante WHERE ID = 933;\nSELECT * FROM Estudiante WHERE ID = 934;\nSELECT * FROM Estudiante WHERE ID = 935;\nSELECT * FROM Estudiante WHERE ID = 936;\nSELECT * FROM Estudiante WHERE ID = 937;\nSELECT * FROM Estudiante WHERE ID = 938;\nSELECT * FROM Estudiante WHERE ID = 939;\nSELECT * FROM Estudiante WHERE ID = 940;\nSELECT * FROM Estudiante WHERE ID = 941;\nSELECT * FROM Estudiante WHERE ID = 942;\nSELECT * FROM Estudiante WHERE ID = 943;\nSELECT * FROM Estudiante WHERE ID = 944;\nSELECT * FROM Estudiante WHERE ID = 945;\nSELECT * FROM Estudiante WHERE ID = 946;\nSELECT * FROM Estudiante WHERE ID = 947;\nSELECT * FROM Estudiante WHERE ID = 948;\nSELECT * FROM Estudiante WHERE ID = 999;\n",
-      "statementCount": 1054
-  },
-    {
-      "id": "benchmark-btree",
-      "title": "Benchmark con BTREE",
-      "category": "Performance",
-      "sourceFile": "scripts/benchmarks/03_select_with_btree.sql",
-      "description": "Carga 1000 registros, crea índice BTREE y ejecuta 50 consultas SELECT por igualdad sobre la columna indexada.",
-      "expectedBehavior": "Debe mejorar contra la búsqueda secuencial. Comparar principalmente promedio SELECT y SELECT final.",
-      "heavy": true,
-      "errorScenario": false,
-      "recommended": true,
-      "script": "CREATE DATABASE BenchmarkBTree;\nSET DATABASE BenchmarkBTree;\n\nCREATE TABLE Estudiante AS (\n  ID INTEGER NOT NULL,\n  Nombre VARCHAR(30) NOT NULL\n);\nINSERT INTO Estudiante VALUES(1, \"Nombre1\");\nINSERT INTO Estudiante VALUES(2, \"Nombre2\");\nINSERT INTO Estudiante VALUES(3, \"Nombre3\");\nINSERT INTO Estudiante VALUES(4, \"Nombre4\");\nINSERT INTO Estudiante VALUES(5, \"Nombre5\");\nINSERT INTO Estudiante VALUES(6, \"Nombre6\");\nINSERT INTO Estudiante VALUES(7, \"Nombre7\");\nINSERT INTO Estudiante VALUES(8, \"Nombre8\");\nINSERT INTO Estudiante VALUES(9, \"Nombre9\");\nINSERT INTO Estudiante VALUES(10, \"Nombre10\");\nINSERT INTO Estudiante VALUES(11, \"Nombre11\");\nINSERT INTO Estudiante VALUES(12, \"Nombre12\");\nINSERT INTO Estudiante VALUES(13, \"Nombre13\");\nINSERT INTO Estudiante VALUES(14, \"Nombre14\");\nINSERT INTO Estudiante VALUES(15, \"Nombre15\");\nINSERT INTO Estudiante VALUES(16, \"Nombre16\");\nINSERT INTO Estudiante VALUES(17, \"Nombre17\");\nINSERT INTO Estudiante VALUES(18, \"Nombre18\");\nINSERT INTO Estudiante VALUES(19, \"Nombre19\");\nINSERT INTO Estudiante VALUES(20, \"Nombre20\");\nINSERT INTO Estudiante VALUES(21, \"Nombre21\");\nINSERT INTO Estudiante VALUES(22, \"Nombre22\");\nINSERT INTO Estudiante VALUES(23, \"Nombre23\");\nINSERT INTO Estudiante VALUES(24, \"Nombre24\");\nINSERT INTO Estudiante VALUES(25, \"Nombre25\");\nINSERT INTO Estudiante VALUES(26, \"Nombre26\");\nINSERT INTO Estudiante VALUES(27, \"Nombre27\");\nINSERT INTO Estudiante VALUES(28, \"Nombre28\");\nINSERT INTO Estudiante VALUES(29, \"Nombre29\");\nINSERT INTO Estudiante VALUES(30, \"Nombre30\");\nINSERT INTO Estudiante VALUES(31, \"Nombre31\");\nINSERT INTO Estudiante VALUES(32, \"Nombre32\");\nINSERT INTO Estudiante VALUES(33, \"Nombre33\");\nINSERT INTO Estudiante VALUES(34, \"Nombre34\");\nINSERT INTO Estudiante VALUES(35, \"Nombre35\");\nINSERT INTO Estudiante VALUES(36, \"Nombre36\");\nINSERT INTO Estudiante VALUES(37, \"Nombre37\");\nINSERT INTO Estudiante VALUES(38, \"Nombre38\");\nINSERT INTO Estudiante VALUES(39, \"Nombre39\");\nINSERT INTO Estudiante VALUES(40, \"Nombre40\");\nINSERT INTO Estudiante VALUES(41, \"Nombre41\");\nINSERT INTO Estudiante VALUES(42, \"Nombre42\");\nINSERT INTO Estudiante VALUES(43, \"Nombre43\");\nINSERT INTO Estudiante VALUES(44, \"Nombre44\");\nINSERT INTO Estudiante VALUES(45, \"Nombre45\");\nINSERT INTO Estudiante VALUES(46, \"Nombre46\");\nINSERT INTO Estudiante VALUES(47, \"Nombre47\");\nINSERT INTO Estudiante VALUES(48, \"Nombre48\");\nINSERT INTO Estudiante VALUES(49, \"Nombre49\");\nINSERT INTO Estudiante VALUES(50, \"Nombre50\");\nINSERT INTO Estudiante VALUES(51, \"Nombre51\");\nINSERT INTO Estudiante VALUES(52, \"Nombre52\");\nINSERT INTO Estudiante VALUES(53, \"Nombre53\");\nINSERT INTO Estudiante VALUES(54, \"Nombre54\");\nINSERT INTO Estudiante VALUES(55, \"Nombre55\");\nINSERT INTO Estudiante VALUES(56, \"Nombre56\");\nINSERT INTO Estudiante VALUES(57, \"Nombre57\");\nINSERT INTO Estudiante VALUES(58, \"Nombre58\");\nINSERT INTO Estudiante VALUES(59, \"Nombre59\");\nINSERT INTO Estudiante VALUES(60, \"Nombre60\");\nINSERT INTO Estudiante VALUES(61, \"Nombre61\");\nINSERT INTO Estudiante VALUES(62, \"Nombre62\");\nINSERT INTO Estudiante VALUES(63, \"Nombre63\");\nINSERT INTO Estudiante VALUES(64, \"Nombre64\");\nINSERT INTO Estudiante VALUES(65, \"Nombre65\");\nINSERT INTO Estudiante VALUES(66, \"Nombre66\");\nINSERT INTO Estudiante VALUES(67, \"Nombre67\");\nINSERT INTO Estudiante VALUES(68, \"Nombre68\");\nINSERT INTO Estudiante VALUES(69, \"Nombre69\");\nINSERT INTO Estudiante VALUES(70, \"Nombre70\");\nINSERT INTO Estudiante VALUES(71, \"Nombre71\");\nINSERT INTO Estudiante VALUES(72, \"Nombre72\");\nINSERT INTO Estudiante VALUES(73, \"Nombre73\");\nINSERT INTO Estudiante VALUES(74, \"Nombre74\");\nINSERT INTO Estudiante VALUES(75, \"Nombre75\");\nINSERT INTO Estudiante VALUES(76, \"Nombre76\");\nINSERT INTO Estudiante VALUES(77, \"Nombre77\");\nINSERT INTO Estudiante VALUES(78, \"Nombre78\");\nINSERT INTO Estudiante VALUES(79, \"Nombre79\");\nINSERT INTO Estudiante VALUES(80, \"Nombre80\");\nINSERT INTO Estudiante VALUES(81, \"Nombre81\");\nINSERT INTO Estudiante VALUES(82, \"Nombre82\");\nINSERT INTO Estudiante VALUES(83, \"Nombre83\");\nINSERT INTO Estudiante VALUES(84, \"Nombre84\");\nINSERT INTO Estudiante VALUES(85, \"Nombre85\");\nINSERT INTO Estudiante VALUES(86, \"Nombre86\");\nINSERT INTO Estudiante VALUES(87, \"Nombre87\");\nINSERT INTO Estudiante VALUES(88, \"Nombre88\");\nINSERT INTO Estudiante VALUES(89, \"Nombre89\");\nINSERT INTO Estudiante VALUES(90, \"Nombre90\");\nINSERT INTO Estudiante VALUES(91, \"Nombre91\");\nINSERT INTO Estudiante VALUES(92, \"Nombre92\");\nINSERT INTO Estudiante VALUES(93, \"Nombre93\");\nINSERT INTO Estudiante VALUES(94, \"Nombre94\");\nINSERT INTO Estudiante VALUES(95, \"Nombre95\");\nINSERT INTO Estudiante VALUES(96, \"Nombre96\");\nINSERT INTO Estudiante VALUES(97, \"Nombre97\");\nINSERT INTO Estudiante VALUES(98, \"Nombre98\");\nINSERT INTO Estudiante VALUES(99, \"Nombre99\");\nINSERT INTO Estudiante VALUES(100, \"Nombre100\");\nINSERT INTO Estudiante VALUES(101, \"Nombre101\");\nINSERT INTO Estudiante VALUES(102, \"Nombre102\");\nINSERT INTO Estudiante VALUES(103, \"Nombre103\");\nINSERT INTO Estudiante VALUES(104, \"Nombre104\");\nINSERT INTO Estudiante VALUES(105, \"Nombre105\");\nINSERT INTO Estudiante VALUES(106, \"Nombre106\");\nINSERT INTO Estudiante VALUES(107, \"Nombre107\");\nINSERT INTO Estudiante VALUES(108, \"Nombre108\");\nINSERT INTO Estudiante VALUES(109, \"Nombre109\");\nINSERT INTO Estudiante VALUES(110, \"Nombre110\");\nINSERT INTO Estudiante VALUES(111, \"Nombre111\");\nINSERT INTO Estudiante VALUES(112, \"Nombre112\");\nINSERT INTO Estudiante VALUES(113, \"Nombre113\");\nINSERT INTO Estudiante VALUES(114, \"Nombre114\");\nINSERT INTO Estudiante VALUES(115, \"Nombre115\");\nINSERT INTO Estudiante VALUES(116, \"Nombre116\");\nINSERT INTO Estudiante VALUES(117, \"Nombre117\");\nINSERT INTO Estudiante VALUES(118, \"Nombre118\");\nINSERT INTO Estudiante VALUES(119, \"Nombre119\");\nINSERT INTO Estudiante VALUES(120, \"Nombre120\");\nINSERT INTO Estudiante VALUES(121, \"Nombre121\");\nINSERT INTO Estudiante VALUES(122, \"Nombre122\");\nINSERT INTO Estudiante VALUES(123, \"Nombre123\");\nINSERT INTO Estudiante VALUES(124, \"Nombre124\");\nINSERT INTO Estudiante VALUES(125, \"Nombre125\");\nINSERT INTO Estudiante VALUES(126, \"Nombre126\");\nINSERT INTO Estudiante VALUES(127, \"Nombre127\");\nINSERT INTO Estudiante VALUES(128, \"Nombre128\");\nINSERT INTO Estudiante VALUES(129, \"Nombre129\");\nINSERT INTO Estudiante VALUES(130, \"Nombre130\");\nINSERT INTO Estudiante VALUES(131, \"Nombre131\");\nINSERT INTO Estudiante VALUES(132, \"Nombre132\");\nINSERT INTO Estudiante VALUES(133, \"Nombre133\");\nINSERT INTO Estudiante VALUES(134, \"Nombre134\");\nINSERT INTO Estudiante VALUES(135, \"Nombre135\");\nINSERT INTO Estudiante VALUES(136, \"Nombre136\");\nINSERT INTO Estudiante VALUES(137, \"Nombre137\");\nINSERT INTO Estudiante VALUES(138, \"Nombre138\");\nINSERT INTO Estudiante VALUES(139, \"Nombre139\");\nINSERT INTO Estudiante VALUES(140, \"Nombre140\");\nINSERT INTO Estudiante VALUES(141, \"Nombre141\");\nINSERT INTO Estudiante VALUES(142, \"Nombre142\");\nINSERT INTO Estudiante VALUES(143, \"Nombre143\");\nINSERT INTO Estudiante VALUES(144, \"Nombre144\");\nINSERT INTO Estudiante VALUES(145, \"Nombre145\");\nINSERT INTO Estudiante VALUES(146, \"Nombre146\");\nINSERT INTO Estudiante VALUES(147, \"Nombre147\");\nINSERT INTO Estudiante VALUES(148, \"Nombre148\");\nINSERT INTO Estudiante VALUES(149, \"Nombre149\");\nINSERT INTO Estudiante VALUES(150, \"Nombre150\");\nINSERT INTO Estudiante VALUES(151, \"Nombre151\");\nINSERT INTO Estudiante VALUES(152, \"Nombre152\");\nINSERT INTO Estudiante VALUES(153, \"Nombre153\");\nINSERT INTO Estudiante VALUES(154, \"Nombre154\");\nINSERT INTO Estudiante VALUES(155, \"Nombre155\");\nINSERT INTO Estudiante VALUES(156, \"Nombre156\");\nINSERT INTO Estudiante VALUES(157, \"Nombre157\");\nINSERT INTO Estudiante VALUES(158, \"Nombre158\");\nINSERT INTO Estudiante VALUES(159, \"Nombre159\");\nINSERT INTO Estudiante VALUES(160, \"Nombre160\");\nINSERT INTO Estudiante VALUES(161, \"Nombre161\");\nINSERT INTO Estudiante VALUES(162, \"Nombre162\");\nINSERT INTO Estudiante VALUES(163, \"Nombre163\");\nINSERT INTO Estudiante VALUES(164, \"Nombre164\");\nINSERT INTO Estudiante VALUES(165, \"Nombre165\");\nINSERT INTO Estudiante VALUES(166, \"Nombre166\");\nINSERT INTO Estudiante VALUES(167, \"Nombre167\");\nINSERT INTO Estudiante VALUES(168, \"Nombre168\");\nINSERT INTO Estudiante VALUES(169, \"Nombre169\");\nINSERT INTO Estudiante VALUES(170, \"Nombre170\");\nINSERT INTO Estudiante VALUES(171, \"Nombre171\");\nINSERT INTO Estudiante VALUES(172, \"Nombre172\");\nINSERT INTO Estudiante VALUES(173, \"Nombre173\");\nINSERT INTO Estudiante VALUES(174, \"Nombre174\");\nINSERT INTO Estudiante VALUES(175, \"Nombre175\");\nINSERT INTO Estudiante VALUES(176, \"Nombre176\");\nINSERT INTO Estudiante VALUES(177, \"Nombre177\");\nINSERT INTO Estudiante VALUES(178, \"Nombre178\");\nINSERT INTO Estudiante VALUES(179, \"Nombre179\");\nINSERT INTO Estudiante VALUES(180, \"Nombre180\");\nINSERT INTO Estudiante VALUES(181, \"Nombre181\");\nINSERT INTO Estudiante VALUES(182, \"Nombre182\");\nINSERT INTO Estudiante VALUES(183, \"Nombre183\");\nINSERT INTO Estudiante VALUES(184, \"Nombre184\");\nINSERT INTO Estudiante VALUES(185, \"Nombre185\");\nINSERT INTO Estudiante VALUES(186, \"Nombre186\");\nINSERT INTO Estudiante VALUES(187, \"Nombre187\");\nINSERT INTO Estudiante VALUES(188, \"Nombre188\");\nINSERT INTO Estudiante VALUES(189, \"Nombre189\");\nINSERT INTO Estudiante VALUES(190, \"Nombre190\");\nINSERT INTO Estudiante VALUES(191, \"Nombre191\");\nINSERT INTO Estudiante VALUES(192, \"Nombre192\");\nINSERT INTO Estudiante VALUES(193, \"Nombre193\");\nINSERT INTO Estudiante VALUES(194, \"Nombre194\");\nINSERT INTO Estudiante VALUES(195, \"Nombre195\");\nINSERT INTO Estudiante VALUES(196, \"Nombre196\");\nINSERT INTO Estudiante VALUES(197, \"Nombre197\");\nINSERT INTO Estudiante VALUES(198, \"Nombre198\");\nINSERT INTO Estudiante VALUES(199, \"Nombre199\");\nINSERT INTO Estudiante VALUES(200, \"Nombre200\");\nINSERT INTO Estudiante VALUES(201, \"Nombre201\");\nINSERT INTO Estudiante VALUES(202, \"Nombre202\");\nINSERT INTO Estudiante VALUES(203, \"Nombre203\");\nINSERT INTO Estudiante VALUES(204, \"Nombre204\");\nINSERT INTO Estudiante VALUES(205, \"Nombre205\");\nINSERT INTO Estudiante VALUES(206, \"Nombre206\");\nINSERT INTO Estudiante VALUES(207, \"Nombre207\");\nINSERT INTO Estudiante VALUES(208, \"Nombre208\");\nINSERT INTO Estudiante VALUES(209, \"Nombre209\");\nINSERT INTO Estudiante VALUES(210, \"Nombre210\");\nINSERT INTO Estudiante VALUES(211, \"Nombre211\");\nINSERT INTO Estudiante VALUES(212, \"Nombre212\");\nINSERT INTO Estudiante VALUES(213, \"Nombre213\");\nINSERT INTO Estudiante VALUES(214, \"Nombre214\");\nINSERT INTO Estudiante VALUES(215, \"Nombre215\");\nINSERT INTO Estudiante VALUES(216, \"Nombre216\");\nINSERT INTO Estudiante VALUES(217, \"Nombre217\");\nINSERT INTO Estudiante VALUES(218, \"Nombre218\");\nINSERT INTO Estudiante VALUES(219, \"Nombre219\");\nINSERT INTO Estudiante VALUES(220, \"Nombre220\");\nINSERT INTO Estudiante VALUES(221, \"Nombre221\");\nINSERT INTO Estudiante VALUES(222, \"Nombre222\");\nINSERT INTO Estudiante VALUES(223, \"Nombre223\");\nINSERT INTO Estudiante VALUES(224, \"Nombre224\");\nINSERT INTO Estudiante VALUES(225, \"Nombre225\");\nINSERT INTO Estudiante VALUES(226, \"Nombre226\");\nINSERT INTO Estudiante VALUES(227, \"Nombre227\");\nINSERT INTO Estudiante VALUES(228, \"Nombre228\");\nINSERT INTO Estudiante VALUES(229, \"Nombre229\");\nINSERT INTO Estudiante VALUES(230, \"Nombre230\");\nINSERT INTO Estudiante VALUES(231, \"Nombre231\");\nINSERT INTO Estudiante VALUES(232, \"Nombre232\");\nINSERT INTO Estudiante VALUES(233, \"Nombre233\");\nINSERT INTO Estudiante VALUES(234, \"Nombre234\");\nINSERT INTO Estudiante VALUES(235, \"Nombre235\");\nINSERT INTO Estudiante VALUES(236, \"Nombre236\");\nINSERT INTO Estudiante VALUES(237, \"Nombre237\");\nINSERT INTO Estudiante VALUES(238, \"Nombre238\");\nINSERT INTO Estudiante VALUES(239, \"Nombre239\");\nINSERT INTO Estudiante VALUES(240, \"Nombre240\");\nINSERT INTO Estudiante VALUES(241, \"Nombre241\");\nINSERT INTO Estudiante VALUES(242, \"Nombre242\");\nINSERT INTO Estudiante VALUES(243, \"Nombre243\");\nINSERT INTO Estudiante VALUES(244, \"Nombre244\");\nINSERT INTO Estudiante VALUES(245, \"Nombre245\");\nINSERT INTO Estudiante VALUES(246, \"Nombre246\");\nINSERT INTO Estudiante VALUES(247, \"Nombre247\");\nINSERT INTO Estudiante VALUES(248, \"Nombre248\");\nINSERT INTO Estudiante VALUES(249, \"Nombre249\");\nINSERT INTO Estudiante VALUES(250, \"Nombre250\");\nINSERT INTO Estudiante VALUES(251, \"Nombre251\");\nINSERT INTO Estudiante VALUES(252, \"Nombre252\");\nINSERT INTO Estudiante VALUES(253, \"Nombre253\");\nINSERT INTO Estudiante VALUES(254, \"Nombre254\");\nINSERT INTO Estudiante VALUES(255, \"Nombre255\");\nINSERT INTO Estudiante VALUES(256, \"Nombre256\");\nINSERT INTO Estudiante VALUES(257, \"Nombre257\");\nINSERT INTO Estudiante VALUES(258, \"Nombre258\");\nINSERT INTO Estudiante VALUES(259, \"Nombre259\");\nINSERT INTO Estudiante VALUES(260, \"Nombre260\");\nINSERT INTO Estudiante VALUES(261, \"Nombre261\");\nINSERT INTO Estudiante VALUES(262, \"Nombre262\");\nINSERT INTO Estudiante VALUES(263, \"Nombre263\");\nINSERT INTO Estudiante VALUES(264, \"Nombre264\");\nINSERT INTO Estudiante VALUES(265, \"Nombre265\");\nINSERT INTO Estudiante VALUES(266, \"Nombre266\");\nINSERT INTO Estudiante VALUES(267, \"Nombre267\");\nINSERT INTO Estudiante VALUES(268, \"Nombre268\");\nINSERT INTO Estudiante VALUES(269, \"Nombre269\");\nINSERT INTO Estudiante VALUES(270, \"Nombre270\");\nINSERT INTO Estudiante VALUES(271, \"Nombre271\");\nINSERT INTO Estudiante VALUES(272, \"Nombre272\");\nINSERT INTO Estudiante VALUES(273, \"Nombre273\");\nINSERT INTO Estudiante VALUES(274, \"Nombre274\");\nINSERT INTO Estudiante VALUES(275, \"Nombre275\");\nINSERT INTO Estudiante VALUES(276, \"Nombre276\");\nINSERT INTO Estudiante VALUES(277, \"Nombre277\");\nINSERT INTO Estudiante VALUES(278, \"Nombre278\");\nINSERT INTO Estudiante VALUES(279, \"Nombre279\");\nINSERT INTO Estudiante VALUES(280, \"Nombre280\");\nINSERT INTO Estudiante VALUES(281, \"Nombre281\");\nINSERT INTO Estudiante VALUES(282, \"Nombre282\");\nINSERT INTO Estudiante VALUES(283, \"Nombre283\");\nINSERT INTO Estudiante VALUES(284, \"Nombre284\");\nINSERT INTO Estudiante VALUES(285, \"Nombre285\");\nINSERT INTO Estudiante VALUES(286, \"Nombre286\");\nINSERT INTO Estudiante VALUES(287, \"Nombre287\");\nINSERT INTO Estudiante VALUES(288, \"Nombre288\");\nINSERT INTO Estudiante VALUES(289, \"Nombre289\");\nINSERT INTO Estudiante VALUES(290, \"Nombre290\");\nINSERT INTO Estudiante VALUES(291, \"Nombre291\");\nINSERT INTO Estudiante VALUES(292, \"Nombre292\");\nINSERT INTO Estudiante VALUES(293, \"Nombre293\");\nINSERT INTO Estudiante VALUES(294, \"Nombre294\");\nINSERT INTO Estudiante VALUES(295, \"Nombre295\");\nINSERT INTO Estudiante VALUES(296, \"Nombre296\");\nINSERT INTO Estudiante VALUES(297, \"Nombre297\");\nINSERT INTO Estudiante VALUES(298, \"Nombre298\");\nINSERT INTO Estudiante VALUES(299, \"Nombre299\");\nINSERT INTO Estudiante VALUES(300, \"Nombre300\");\nINSERT INTO Estudiante VALUES(301, \"Nombre301\");\nINSERT INTO Estudiante VALUES(302, \"Nombre302\");\nINSERT INTO Estudiante VALUES(303, \"Nombre303\");\nINSERT INTO Estudiante VALUES(304, \"Nombre304\");\nINSERT INTO Estudiante VALUES(305, \"Nombre305\");\nINSERT INTO Estudiante VALUES(306, \"Nombre306\");\nINSERT INTO Estudiante VALUES(307, \"Nombre307\");\nINSERT INTO Estudiante VALUES(308, \"Nombre308\");\nINSERT INTO Estudiante VALUES(309, \"Nombre309\");\nINSERT INTO Estudiante VALUES(310, \"Nombre310\");\nINSERT INTO Estudiante VALUES(311, \"Nombre311\");\nINSERT INTO Estudiante VALUES(312, \"Nombre312\");\nINSERT INTO Estudiante VALUES(313, \"Nombre313\");\nINSERT INTO Estudiante VALUES(314, \"Nombre314\");\nINSERT INTO Estudiante VALUES(315, \"Nombre315\");\nINSERT INTO Estudiante VALUES(316, \"Nombre316\");\nINSERT INTO Estudiante VALUES(317, \"Nombre317\");\nINSERT INTO Estudiante VALUES(318, \"Nombre318\");\nINSERT INTO Estudiante VALUES(319, \"Nombre319\");\nINSERT INTO Estudiante VALUES(320, \"Nombre320\");\nINSERT INTO Estudiante VALUES(321, \"Nombre321\");\nINSERT INTO Estudiante VALUES(322, \"Nombre322\");\nINSERT INTO Estudiante VALUES(323, \"Nombre323\");\nINSERT INTO Estudiante VALUES(324, \"Nombre324\");\nINSERT INTO Estudiante VALUES(325, \"Nombre325\");\nINSERT INTO Estudiante VALUES(326, \"Nombre326\");\nINSERT INTO Estudiante VALUES(327, \"Nombre327\");\nINSERT INTO Estudiante VALUES(328, \"Nombre328\");\nINSERT INTO Estudiante VALUES(329, \"Nombre329\");\nINSERT INTO Estudiante VALUES(330, \"Nombre330\");\nINSERT INTO Estudiante VALUES(331, \"Nombre331\");\nINSERT INTO Estudiante VALUES(332, \"Nombre332\");\nINSERT INTO Estudiante VALUES(333, \"Nombre333\");\nINSERT INTO Estudiante VALUES(334, \"Nombre334\");\nINSERT INTO Estudiante VALUES(335, \"Nombre335\");\nINSERT INTO Estudiante VALUES(336, \"Nombre336\");\nINSERT INTO Estudiante VALUES(337, \"Nombre337\");\nINSERT INTO Estudiante VALUES(338, \"Nombre338\");\nINSERT INTO Estudiante VALUES(339, \"Nombre339\");\nINSERT INTO Estudiante VALUES(340, \"Nombre340\");\nINSERT INTO Estudiante VALUES(341, \"Nombre341\");\nINSERT INTO Estudiante VALUES(342, \"Nombre342\");\nINSERT INTO Estudiante VALUES(343, \"Nombre343\");\nINSERT INTO Estudiante VALUES(344, \"Nombre344\");\nINSERT INTO Estudiante VALUES(345, \"Nombre345\");\nINSERT INTO Estudiante VALUES(346, \"Nombre346\");\nINSERT INTO Estudiante VALUES(347, \"Nombre347\");\nINSERT INTO Estudiante VALUES(348, \"Nombre348\");\nINSERT INTO Estudiante VALUES(349, \"Nombre349\");\nINSERT INTO Estudiante VALUES(350, \"Nombre350\");\nINSERT INTO Estudiante VALUES(351, \"Nombre351\");\nINSERT INTO Estudiante VALUES(352, \"Nombre352\");\nINSERT INTO Estudiante VALUES(353, \"Nombre353\");\nINSERT INTO Estudiante VALUES(354, \"Nombre354\");\nINSERT INTO Estudiante VALUES(355, \"Nombre355\");\nINSERT INTO Estudiante VALUES(356, \"Nombre356\");\nINSERT INTO Estudiante VALUES(357, \"Nombre357\");\nINSERT INTO Estudiante VALUES(358, \"Nombre358\");\nINSERT INTO Estudiante VALUES(359, \"Nombre359\");\nINSERT INTO Estudiante VALUES(360, \"Nombre360\");\nINSERT INTO Estudiante VALUES(361, \"Nombre361\");\nINSERT INTO Estudiante VALUES(362, \"Nombre362\");\nINSERT INTO Estudiante VALUES(363, \"Nombre363\");\nINSERT INTO Estudiante VALUES(364, \"Nombre364\");\nINSERT INTO Estudiante VALUES(365, \"Nombre365\");\nINSERT INTO Estudiante VALUES(366, \"Nombre366\");\nINSERT INTO Estudiante VALUES(367, \"Nombre367\");\nINSERT INTO Estudiante VALUES(368, \"Nombre368\");\nINSERT INTO Estudiante VALUES(369, \"Nombre369\");\nINSERT INTO Estudiante VALUES(370, \"Nombre370\");\nINSERT INTO Estudiante VALUES(371, \"Nombre371\");\nINSERT INTO Estudiante VALUES(372, \"Nombre372\");\nINSERT INTO Estudiante VALUES(373, \"Nombre373\");\nINSERT INTO Estudiante VALUES(374, \"Nombre374\");\nINSERT INTO Estudiante VALUES(375, \"Nombre375\");\nINSERT INTO Estudiante VALUES(376, \"Nombre376\");\nINSERT INTO Estudiante VALUES(377, \"Nombre377\");\nINSERT INTO Estudiante VALUES(378, \"Nombre378\");\nINSERT INTO Estudiante VALUES(379, \"Nombre379\");\nINSERT INTO Estudiante VALUES(380, \"Nombre380\");\nINSERT INTO Estudiante VALUES(381, \"Nombre381\");\nINSERT INTO Estudiante VALUES(382, \"Nombre382\");\nINSERT INTO Estudiante VALUES(383, \"Nombre383\");\nINSERT INTO Estudiante VALUES(384, \"Nombre384\");\nINSERT INTO Estudiante VALUES(385, \"Nombre385\");\nINSERT INTO Estudiante VALUES(386, \"Nombre386\");\nINSERT INTO Estudiante VALUES(387, \"Nombre387\");\nINSERT INTO Estudiante VALUES(388, \"Nombre388\");\nINSERT INTO Estudiante VALUES(389, \"Nombre389\");\nINSERT INTO Estudiante VALUES(390, \"Nombre390\");\nINSERT INTO Estudiante VALUES(391, \"Nombre391\");\nINSERT INTO Estudiante VALUES(392, \"Nombre392\");\nINSERT INTO Estudiante VALUES(393, \"Nombre393\");\nINSERT INTO Estudiante VALUES(394, \"Nombre394\");\nINSERT INTO Estudiante VALUES(395, \"Nombre395\");\nINSERT INTO Estudiante VALUES(396, \"Nombre396\");\nINSERT INTO Estudiante VALUES(397, \"Nombre397\");\nINSERT INTO Estudiante VALUES(398, \"Nombre398\");\nINSERT INTO Estudiante VALUES(399, \"Nombre399\");\nINSERT INTO Estudiante VALUES(400, \"Nombre400\");\nINSERT INTO Estudiante VALUES(401, \"Nombre401\");\nINSERT INTO Estudiante VALUES(402, \"Nombre402\");\nINSERT INTO Estudiante VALUES(403, \"Nombre403\");\nINSERT INTO Estudiante VALUES(404, \"Nombre404\");\nINSERT INTO Estudiante VALUES(405, \"Nombre405\");\nINSERT INTO Estudiante VALUES(406, \"Nombre406\");\nINSERT INTO Estudiante VALUES(407, \"Nombre407\");\nINSERT INTO Estudiante VALUES(408, \"Nombre408\");\nINSERT INTO Estudiante VALUES(409, \"Nombre409\");\nINSERT INTO Estudiante VALUES(410, \"Nombre410\");\nINSERT INTO Estudiante VALUES(411, \"Nombre411\");\nINSERT INTO Estudiante VALUES(412, \"Nombre412\");\nINSERT INTO Estudiante VALUES(413, \"Nombre413\");\nINSERT INTO Estudiante VALUES(414, \"Nombre414\");\nINSERT INTO Estudiante VALUES(415, \"Nombre415\");\nINSERT INTO Estudiante VALUES(416, \"Nombre416\");\nINSERT INTO Estudiante VALUES(417, \"Nombre417\");\nINSERT INTO Estudiante VALUES(418, \"Nombre418\");\nINSERT INTO Estudiante VALUES(419, \"Nombre419\");\nINSERT INTO Estudiante VALUES(420, \"Nombre420\");\nINSERT INTO Estudiante VALUES(421, \"Nombre421\");\nINSERT INTO Estudiante VALUES(422, \"Nombre422\");\nINSERT INTO Estudiante VALUES(423, \"Nombre423\");\nINSERT INTO Estudiante VALUES(424, \"Nombre424\");\nINSERT INTO Estudiante VALUES(425, \"Nombre425\");\nINSERT INTO Estudiante VALUES(426, \"Nombre426\");\nINSERT INTO Estudiante VALUES(427, \"Nombre427\");\nINSERT INTO Estudiante VALUES(428, \"Nombre428\");\nINSERT INTO Estudiante VALUES(429, \"Nombre429\");\nINSERT INTO Estudiante VALUES(430, \"Nombre430\");\nINSERT INTO Estudiante VALUES(431, \"Nombre431\");\nINSERT INTO Estudiante VALUES(432, \"Nombre432\");\nINSERT INTO Estudiante VALUES(433, \"Nombre433\");\nINSERT INTO Estudiante VALUES(434, \"Nombre434\");\nINSERT INTO Estudiante VALUES(435, \"Nombre435\");\nINSERT INTO Estudiante VALUES(436, \"Nombre436\");\nINSERT INTO Estudiante VALUES(437, \"Nombre437\");\nINSERT INTO Estudiante VALUES(438, \"Nombre438\");\nINSERT INTO Estudiante VALUES(439, \"Nombre439\");\nINSERT INTO Estudiante VALUES(440, \"Nombre440\");\nINSERT INTO Estudiante VALUES(441, \"Nombre441\");\nINSERT INTO Estudiante VALUES(442, \"Nombre442\");\nINSERT INTO Estudiante VALUES(443, \"Nombre443\");\nINSERT INTO Estudiante VALUES(444, \"Nombre444\");\nINSERT INTO Estudiante VALUES(445, \"Nombre445\");\nINSERT INTO Estudiante VALUES(446, \"Nombre446\");\nINSERT INTO Estudiante VALUES(447, \"Nombre447\");\nINSERT INTO Estudiante VALUES(448, \"Nombre448\");\nINSERT INTO Estudiante VALUES(449, \"Nombre449\");\nINSERT INTO Estudiante VALUES(450, \"Nombre450\");\nINSERT INTO Estudiante VALUES(451, \"Nombre451\");\nINSERT INTO Estudiante VALUES(452, \"Nombre452\");\nINSERT INTO Estudiante VALUES(453, \"Nombre453\");\nINSERT INTO Estudiante VALUES(454, \"Nombre454\");\nINSERT INTO Estudiante VALUES(455, \"Nombre455\");\nINSERT INTO Estudiante VALUES(456, \"Nombre456\");\nINSERT INTO Estudiante VALUES(457, \"Nombre457\");\nINSERT INTO Estudiante VALUES(458, \"Nombre458\");\nINSERT INTO Estudiante VALUES(459, \"Nombre459\");\nINSERT INTO Estudiante VALUES(460, \"Nombre460\");\nINSERT INTO Estudiante VALUES(461, \"Nombre461\");\nINSERT INTO Estudiante VALUES(462, \"Nombre462\");\nINSERT INTO Estudiante VALUES(463, \"Nombre463\");\nINSERT INTO Estudiante VALUES(464, \"Nombre464\");\nINSERT INTO Estudiante VALUES(465, \"Nombre465\");\nINSERT INTO Estudiante VALUES(466, \"Nombre466\");\nINSERT INTO Estudiante VALUES(467, \"Nombre467\");\nINSERT INTO Estudiante VALUES(468, \"Nombre468\");\nINSERT INTO Estudiante VALUES(469, \"Nombre469\");\nINSERT INTO Estudiante VALUES(470, \"Nombre470\");\nINSERT INTO Estudiante VALUES(471, \"Nombre471\");\nINSERT INTO Estudiante VALUES(472, \"Nombre472\");\nINSERT INTO Estudiante VALUES(473, \"Nombre473\");\nINSERT INTO Estudiante VALUES(474, \"Nombre474\");\nINSERT INTO Estudiante VALUES(475, \"Nombre475\");\nINSERT INTO Estudiante VALUES(476, \"Nombre476\");\nINSERT INTO Estudiante VALUES(477, \"Nombre477\");\nINSERT INTO Estudiante VALUES(478, \"Nombre478\");\nINSERT INTO Estudiante VALUES(479, \"Nombre479\");\nINSERT INTO Estudiante VALUES(480, \"Nombre480\");\nINSERT INTO Estudiante VALUES(481, \"Nombre481\");\nINSERT INTO Estudiante VALUES(482, \"Nombre482\");\nINSERT INTO Estudiante VALUES(483, \"Nombre483\");\nINSERT INTO Estudiante VALUES(484, \"Nombre484\");\nINSERT INTO Estudiante VALUES(485, \"Nombre485\");\nINSERT INTO Estudiante VALUES(486, \"Nombre486\");\nINSERT INTO Estudiante VALUES(487, \"Nombre487\");\nINSERT INTO Estudiante VALUES(488, \"Nombre488\");\nINSERT INTO Estudiante VALUES(489, \"Nombre489\");\nINSERT INTO Estudiante VALUES(490, \"Nombre490\");\nINSERT INTO Estudiante VALUES(491, \"Nombre491\");\nINSERT INTO Estudiante VALUES(492, \"Nombre492\");\nINSERT INTO Estudiante VALUES(493, \"Nombre493\");\nINSERT INTO Estudiante VALUES(494, \"Nombre494\");\nINSERT INTO Estudiante VALUES(495, \"Nombre495\");\nINSERT INTO Estudiante VALUES(496, \"Nombre496\");\nINSERT INTO Estudiante VALUES(497, \"Nombre497\");\nINSERT INTO Estudiante VALUES(498, \"Nombre498\");\nINSERT INTO Estudiante VALUES(499, \"Nombre499\");\nINSERT INTO Estudiante VALUES(500, \"Nombre500\");\nINSERT INTO Estudiante VALUES(501, \"Nombre501\");\nINSERT INTO Estudiante VALUES(502, \"Nombre502\");\nINSERT INTO Estudiante VALUES(503, \"Nombre503\");\nINSERT INTO Estudiante VALUES(504, \"Nombre504\");\nINSERT INTO Estudiante VALUES(505, \"Nombre505\");\nINSERT INTO Estudiante VALUES(506, \"Nombre506\");\nINSERT INTO Estudiante VALUES(507, \"Nombre507\");\nINSERT INTO Estudiante VALUES(508, \"Nombre508\");\nINSERT INTO Estudiante VALUES(509, \"Nombre509\");\nINSERT INTO Estudiante VALUES(510, \"Nombre510\");\nINSERT INTO Estudiante VALUES(511, \"Nombre511\");\nINSERT INTO Estudiante VALUES(512, \"Nombre512\");\nINSERT INTO Estudiante VALUES(513, \"Nombre513\");\nINSERT INTO Estudiante VALUES(514, \"Nombre514\");\nINSERT INTO Estudiante VALUES(515, \"Nombre515\");\nINSERT INTO Estudiante VALUES(516, \"Nombre516\");\nINSERT INTO Estudiante VALUES(517, \"Nombre517\");\nINSERT INTO Estudiante VALUES(518, \"Nombre518\");\nINSERT INTO Estudiante VALUES(519, \"Nombre519\");\nINSERT INTO Estudiante VALUES(520, \"Nombre520\");\nINSERT INTO Estudiante VALUES(521, \"Nombre521\");\nINSERT INTO Estudiante VALUES(522, \"Nombre522\");\nINSERT INTO Estudiante VALUES(523, \"Nombre523\");\nINSERT INTO Estudiante VALUES(524, \"Nombre524\");\nINSERT INTO Estudiante VALUES(525, \"Nombre525\");\nINSERT INTO Estudiante VALUES(526, \"Nombre526\");\nINSERT INTO Estudiante VALUES(527, \"Nombre527\");\nINSERT INTO Estudiante VALUES(528, \"Nombre528\");\nINSERT INTO Estudiante VALUES(529, \"Nombre529\");\nINSERT INTO Estudiante VALUES(530, \"Nombre530\");\nINSERT INTO Estudiante VALUES(531, \"Nombre531\");\nINSERT INTO Estudiante VALUES(532, \"Nombre532\");\nINSERT INTO Estudiante VALUES(533, \"Nombre533\");\nINSERT INTO Estudiante VALUES(534, \"Nombre534\");\nINSERT INTO Estudiante VALUES(535, \"Nombre535\");\nINSERT INTO Estudiante VALUES(536, \"Nombre536\");\nINSERT INTO Estudiante VALUES(537, \"Nombre537\");\nINSERT INTO Estudiante VALUES(538, \"Nombre538\");\nINSERT INTO Estudiante VALUES(539, \"Nombre539\");\nINSERT INTO Estudiante VALUES(540, \"Nombre540\");\nINSERT INTO Estudiante VALUES(541, \"Nombre541\");\nINSERT INTO Estudiante VALUES(542, \"Nombre542\");\nINSERT INTO Estudiante VALUES(543, \"Nombre543\");\nINSERT INTO Estudiante VALUES(544, \"Nombre544\");\nINSERT INTO Estudiante VALUES(545, \"Nombre545\");\nINSERT INTO Estudiante VALUES(546, \"Nombre546\");\nINSERT INTO Estudiante VALUES(547, \"Nombre547\");\nINSERT INTO Estudiante VALUES(548, \"Nombre548\");\nINSERT INTO Estudiante VALUES(549, \"Nombre549\");\nINSERT INTO Estudiante VALUES(550, \"Nombre550\");\nINSERT INTO Estudiante VALUES(551, \"Nombre551\");\nINSERT INTO Estudiante VALUES(552, \"Nombre552\");\nINSERT INTO Estudiante VALUES(553, \"Nombre553\");\nINSERT INTO Estudiante VALUES(554, \"Nombre554\");\nINSERT INTO Estudiante VALUES(555, \"Nombre555\");\nINSERT INTO Estudiante VALUES(556, \"Nombre556\");\nINSERT INTO Estudiante VALUES(557, \"Nombre557\");\nINSERT INTO Estudiante VALUES(558, \"Nombre558\");\nINSERT INTO Estudiante VALUES(559, \"Nombre559\");\nINSERT INTO Estudiante VALUES(560, \"Nombre560\");\nINSERT INTO Estudiante VALUES(561, \"Nombre561\");\nINSERT INTO Estudiante VALUES(562, \"Nombre562\");\nINSERT INTO Estudiante VALUES(563, \"Nombre563\");\nINSERT INTO Estudiante VALUES(564, \"Nombre564\");\nINSERT INTO Estudiante VALUES(565, \"Nombre565\");\nINSERT INTO Estudiante VALUES(566, \"Nombre566\");\nINSERT INTO Estudiante VALUES(567, \"Nombre567\");\nINSERT INTO Estudiante VALUES(568, \"Nombre568\");\nINSERT INTO Estudiante VALUES(569, \"Nombre569\");\nINSERT INTO Estudiante VALUES(570, \"Nombre570\");\nINSERT INTO Estudiante VALUES(571, \"Nombre571\");\nINSERT INTO Estudiante VALUES(572, \"Nombre572\");\nINSERT INTO Estudiante VALUES(573, \"Nombre573\");\nINSERT INTO Estudiante VALUES(574, \"Nombre574\");\nINSERT INTO Estudiante VALUES(575, \"Nombre575\");\nINSERT INTO Estudiante VALUES(576, \"Nombre576\");\nINSERT INTO Estudiante VALUES(577, \"Nombre577\");\nINSERT INTO Estudiante VALUES(578, \"Nombre578\");\nINSERT INTO Estudiante VALUES(579, \"Nombre579\");\nINSERT INTO Estudiante VALUES(580, \"Nombre580\");\nINSERT INTO Estudiante VALUES(581, \"Nombre581\");\nINSERT INTO Estudiante VALUES(582, \"Nombre582\");\nINSERT INTO Estudiante VALUES(583, \"Nombre583\");\nINSERT INTO Estudiante VALUES(584, \"Nombre584\");\nINSERT INTO Estudiante VALUES(585, \"Nombre585\");\nINSERT INTO Estudiante VALUES(586, \"Nombre586\");\nINSERT INTO Estudiante VALUES(587, \"Nombre587\");\nINSERT INTO Estudiante VALUES(588, \"Nombre588\");\nINSERT INTO Estudiante VALUES(589, \"Nombre589\");\nINSERT INTO Estudiante VALUES(590, \"Nombre590\");\nINSERT INTO Estudiante VALUES(591, \"Nombre591\");\nINSERT INTO Estudiante VALUES(592, \"Nombre592\");\nINSERT INTO Estudiante VALUES(593, \"Nombre593\");\nINSERT INTO Estudiante VALUES(594, \"Nombre594\");\nINSERT INTO Estudiante VALUES(595, \"Nombre595\");\nINSERT INTO Estudiante VALUES(596, \"Nombre596\");\nINSERT INTO Estudiante VALUES(597, \"Nombre597\");\nINSERT INTO Estudiante VALUES(598, \"Nombre598\");\nINSERT INTO Estudiante VALUES(599, \"Nombre599\");\nINSERT INTO Estudiante VALUES(600, \"Nombre600\");\nINSERT INTO Estudiante VALUES(601, \"Nombre601\");\nINSERT INTO Estudiante VALUES(602, \"Nombre602\");\nINSERT INTO Estudiante VALUES(603, \"Nombre603\");\nINSERT INTO Estudiante VALUES(604, \"Nombre604\");\nINSERT INTO Estudiante VALUES(605, \"Nombre605\");\nINSERT INTO Estudiante VALUES(606, \"Nombre606\");\nINSERT INTO Estudiante VALUES(607, \"Nombre607\");\nINSERT INTO Estudiante VALUES(608, \"Nombre608\");\nINSERT INTO Estudiante VALUES(609, \"Nombre609\");\nINSERT INTO Estudiante VALUES(610, \"Nombre610\");\nINSERT INTO Estudiante VALUES(611, \"Nombre611\");\nINSERT INTO Estudiante VALUES(612, \"Nombre612\");\nINSERT INTO Estudiante VALUES(613, \"Nombre613\");\nINSERT INTO Estudiante VALUES(614, \"Nombre614\");\nINSERT INTO Estudiante VALUES(615, \"Nombre615\");\nINSERT INTO Estudiante VALUES(616, \"Nombre616\");\nINSERT INTO Estudiante VALUES(617, \"Nombre617\");\nINSERT INTO Estudiante VALUES(618, \"Nombre618\");\nINSERT INTO Estudiante VALUES(619, \"Nombre619\");\nINSERT INTO Estudiante VALUES(620, \"Nombre620\");\nINSERT INTO Estudiante VALUES(621, \"Nombre621\");\nINSERT INTO Estudiante VALUES(622, \"Nombre622\");\nINSERT INTO Estudiante VALUES(623, \"Nombre623\");\nINSERT INTO Estudiante VALUES(624, \"Nombre624\");\nINSERT INTO Estudiante VALUES(625, \"Nombre625\");\nINSERT INTO Estudiante VALUES(626, \"Nombre626\");\nINSERT INTO Estudiante VALUES(627, \"Nombre627\");\nINSERT INTO Estudiante VALUES(628, \"Nombre628\");\nINSERT INTO Estudiante VALUES(629, \"Nombre629\");\nINSERT INTO Estudiante VALUES(630, \"Nombre630\");\nINSERT INTO Estudiante VALUES(631, \"Nombre631\");\nINSERT INTO Estudiante VALUES(632, \"Nombre632\");\nINSERT INTO Estudiante VALUES(633, \"Nombre633\");\nINSERT INTO Estudiante VALUES(634, \"Nombre634\");\nINSERT INTO Estudiante VALUES(635, \"Nombre635\");\nINSERT INTO Estudiante VALUES(636, \"Nombre636\");\nINSERT INTO Estudiante VALUES(637, \"Nombre637\");\nINSERT INTO Estudiante VALUES(638, \"Nombre638\");\nINSERT INTO Estudiante VALUES(639, \"Nombre639\");\nINSERT INTO Estudiante VALUES(640, \"Nombre640\");\nINSERT INTO Estudiante VALUES(641, \"Nombre641\");\nINSERT INTO Estudiante VALUES(642, \"Nombre642\");\nINSERT INTO Estudiante VALUES(643, \"Nombre643\");\nINSERT INTO Estudiante VALUES(644, \"Nombre644\");\nINSERT INTO Estudiante VALUES(645, \"Nombre645\");\nINSERT INTO Estudiante VALUES(646, \"Nombre646\");\nINSERT INTO Estudiante VALUES(647, \"Nombre647\");\nINSERT INTO Estudiante VALUES(648, \"Nombre648\");\nINSERT INTO Estudiante VALUES(649, \"Nombre649\");\nINSERT INTO Estudiante VALUES(650, \"Nombre650\");\nINSERT INTO Estudiante VALUES(651, \"Nombre651\");\nINSERT INTO Estudiante VALUES(652, \"Nombre652\");\nINSERT INTO Estudiante VALUES(653, \"Nombre653\");\nINSERT INTO Estudiante VALUES(654, \"Nombre654\");\nINSERT INTO Estudiante VALUES(655, \"Nombre655\");\nINSERT INTO Estudiante VALUES(656, \"Nombre656\");\nINSERT INTO Estudiante VALUES(657, \"Nombre657\");\nINSERT INTO Estudiante VALUES(658, \"Nombre658\");\nINSERT INTO Estudiante VALUES(659, \"Nombre659\");\nINSERT INTO Estudiante VALUES(660, \"Nombre660\");\nINSERT INTO Estudiante VALUES(661, \"Nombre661\");\nINSERT INTO Estudiante VALUES(662, \"Nombre662\");\nINSERT INTO Estudiante VALUES(663, \"Nombre663\");\nINSERT INTO Estudiante VALUES(664, \"Nombre664\");\nINSERT INTO Estudiante VALUES(665, \"Nombre665\");\nINSERT INTO Estudiante VALUES(666, \"Nombre666\");\nINSERT INTO Estudiante VALUES(667, \"Nombre667\");\nINSERT INTO Estudiante VALUES(668, \"Nombre668\");\nINSERT INTO Estudiante VALUES(669, \"Nombre669\");\nINSERT INTO Estudiante VALUES(670, \"Nombre670\");\nINSERT INTO Estudiante VALUES(671, \"Nombre671\");\nINSERT INTO Estudiante VALUES(672, \"Nombre672\");\nINSERT INTO Estudiante VALUES(673, \"Nombre673\");\nINSERT INTO Estudiante VALUES(674, \"Nombre674\");\nINSERT INTO Estudiante VALUES(675, \"Nombre675\");\nINSERT INTO Estudiante VALUES(676, \"Nombre676\");\nINSERT INTO Estudiante VALUES(677, \"Nombre677\");\nINSERT INTO Estudiante VALUES(678, \"Nombre678\");\nINSERT INTO Estudiante VALUES(679, \"Nombre679\");\nINSERT INTO Estudiante VALUES(680, \"Nombre680\");\nINSERT INTO Estudiante VALUES(681, \"Nombre681\");\nINSERT INTO Estudiante VALUES(682, \"Nombre682\");\nINSERT INTO Estudiante VALUES(683, \"Nombre683\");\nINSERT INTO Estudiante VALUES(684, \"Nombre684\");\nINSERT INTO Estudiante VALUES(685, \"Nombre685\");\nINSERT INTO Estudiante VALUES(686, \"Nombre686\");\nINSERT INTO Estudiante VALUES(687, \"Nombre687\");\nINSERT INTO Estudiante VALUES(688, \"Nombre688\");\nINSERT INTO Estudiante VALUES(689, \"Nombre689\");\nINSERT INTO Estudiante VALUES(690, \"Nombre690\");\nINSERT INTO Estudiante VALUES(691, \"Nombre691\");\nINSERT INTO Estudiante VALUES(692, \"Nombre692\");\nINSERT INTO Estudiante VALUES(693, \"Nombre693\");\nINSERT INTO Estudiante VALUES(694, \"Nombre694\");\nINSERT INTO Estudiante VALUES(695, \"Nombre695\");\nINSERT INTO Estudiante VALUES(696, \"Nombre696\");\nINSERT INTO Estudiante VALUES(697, \"Nombre697\");\nINSERT INTO Estudiante VALUES(698, \"Nombre698\");\nINSERT INTO Estudiante VALUES(699, \"Nombre699\");\nINSERT INTO Estudiante VALUES(700, \"Nombre700\");\nINSERT INTO Estudiante VALUES(701, \"Nombre701\");\nINSERT INTO Estudiante VALUES(702, \"Nombre702\");\nINSERT INTO Estudiante VALUES(703, \"Nombre703\");\nINSERT INTO Estudiante VALUES(704, \"Nombre704\");\nINSERT INTO Estudiante VALUES(705, \"Nombre705\");\nINSERT INTO Estudiante VALUES(706, \"Nombre706\");\nINSERT INTO Estudiante VALUES(707, \"Nombre707\");\nINSERT INTO Estudiante VALUES(708, \"Nombre708\");\nINSERT INTO Estudiante VALUES(709, \"Nombre709\");\nINSERT INTO Estudiante VALUES(710, \"Nombre710\");\nINSERT INTO Estudiante VALUES(711, \"Nombre711\");\nINSERT INTO Estudiante VALUES(712, \"Nombre712\");\nINSERT INTO Estudiante VALUES(713, \"Nombre713\");\nINSERT INTO Estudiante VALUES(714, \"Nombre714\");\nINSERT INTO Estudiante VALUES(715, \"Nombre715\");\nINSERT INTO Estudiante VALUES(716, \"Nombre716\");\nINSERT INTO Estudiante VALUES(717, \"Nombre717\");\nINSERT INTO Estudiante VALUES(718, \"Nombre718\");\nINSERT INTO Estudiante VALUES(719, \"Nombre719\");\nINSERT INTO Estudiante VALUES(720, \"Nombre720\");\nINSERT INTO Estudiante VALUES(721, \"Nombre721\");\nINSERT INTO Estudiante VALUES(722, \"Nombre722\");\nINSERT INTO Estudiante VALUES(723, \"Nombre723\");\nINSERT INTO Estudiante VALUES(724, \"Nombre724\");\nINSERT INTO Estudiante VALUES(725, \"Nombre725\");\nINSERT INTO Estudiante VALUES(726, \"Nombre726\");\nINSERT INTO Estudiante VALUES(727, \"Nombre727\");\nINSERT INTO Estudiante VALUES(728, \"Nombre728\");\nINSERT INTO Estudiante VALUES(729, \"Nombre729\");\nINSERT INTO Estudiante VALUES(730, \"Nombre730\");\nINSERT INTO Estudiante VALUES(731, \"Nombre731\");\nINSERT INTO Estudiante VALUES(732, \"Nombre732\");\nINSERT INTO Estudiante VALUES(733, \"Nombre733\");\nINSERT INTO Estudiante VALUES(734, \"Nombre734\");\nINSERT INTO Estudiante VALUES(735, \"Nombre735\");\nINSERT INTO Estudiante VALUES(736, \"Nombre736\");\nINSERT INTO Estudiante VALUES(737, \"Nombre737\");\nINSERT INTO Estudiante VALUES(738, \"Nombre738\");\nINSERT INTO Estudiante VALUES(739, \"Nombre739\");\nINSERT INTO Estudiante VALUES(740, \"Nombre740\");\nINSERT INTO Estudiante VALUES(741, \"Nombre741\");\nINSERT INTO Estudiante VALUES(742, \"Nombre742\");\nINSERT INTO Estudiante VALUES(743, \"Nombre743\");\nINSERT INTO Estudiante VALUES(744, \"Nombre744\");\nINSERT INTO Estudiante VALUES(745, \"Nombre745\");\nINSERT INTO Estudiante VALUES(746, \"Nombre746\");\nINSERT INTO Estudiante VALUES(747, \"Nombre747\");\nINSERT INTO Estudiante VALUES(748, \"Nombre748\");\nINSERT INTO Estudiante VALUES(749, \"Nombre749\");\nINSERT INTO Estudiante VALUES(750, \"Nombre750\");\nINSERT INTO Estudiante VALUES(751, \"Nombre751\");\nINSERT INTO Estudiante VALUES(752, \"Nombre752\");\nINSERT INTO Estudiante VALUES(753, \"Nombre753\");\nINSERT INTO Estudiante VALUES(754, \"Nombre754\");\nINSERT INTO Estudiante VALUES(755, \"Nombre755\");\nINSERT INTO Estudiante VALUES(756, \"Nombre756\");\nINSERT INTO Estudiante VALUES(757, \"Nombre757\");\nINSERT INTO Estudiante VALUES(758, \"Nombre758\");\nINSERT INTO Estudiante VALUES(759, \"Nombre759\");\nINSERT INTO Estudiante VALUES(760, \"Nombre760\");\nINSERT INTO Estudiante VALUES(761, \"Nombre761\");\nINSERT INTO Estudiante VALUES(762, \"Nombre762\");\nINSERT INTO Estudiante VALUES(763, \"Nombre763\");\nINSERT INTO Estudiante VALUES(764, \"Nombre764\");\nINSERT INTO Estudiante VALUES(765, \"Nombre765\");\nINSERT INTO Estudiante VALUES(766, \"Nombre766\");\nINSERT INTO Estudiante VALUES(767, \"Nombre767\");\nINSERT INTO Estudiante VALUES(768, \"Nombre768\");\nINSERT INTO Estudiante VALUES(769, \"Nombre769\");\nINSERT INTO Estudiante VALUES(770, \"Nombre770\");\nINSERT INTO Estudiante VALUES(771, \"Nombre771\");\nINSERT INTO Estudiante VALUES(772, \"Nombre772\");\nINSERT INTO Estudiante VALUES(773, \"Nombre773\");\nINSERT INTO Estudiante VALUES(774, \"Nombre774\");\nINSERT INTO Estudiante VALUES(775, \"Nombre775\");\nINSERT INTO Estudiante VALUES(776, \"Nombre776\");\nINSERT INTO Estudiante VALUES(777, \"Nombre777\");\nINSERT INTO Estudiante VALUES(778, \"Nombre778\");\nINSERT INTO Estudiante VALUES(779, \"Nombre779\");\nINSERT INTO Estudiante VALUES(780, \"Nombre780\");\nINSERT INTO Estudiante VALUES(781, \"Nombre781\");\nINSERT INTO Estudiante VALUES(782, \"Nombre782\");\nINSERT INTO Estudiante VALUES(783, \"Nombre783\");\nINSERT INTO Estudiante VALUES(784, \"Nombre784\");\nINSERT INTO Estudiante VALUES(785, \"Nombre785\");\nINSERT INTO Estudiante VALUES(786, \"Nombre786\");\nINSERT INTO Estudiante VALUES(787, \"Nombre787\");\nINSERT INTO Estudiante VALUES(788, \"Nombre788\");\nINSERT INTO Estudiante VALUES(789, \"Nombre789\");\nINSERT INTO Estudiante VALUES(790, \"Nombre790\");\nINSERT INTO Estudiante VALUES(791, \"Nombre791\");\nINSERT INTO Estudiante VALUES(792, \"Nombre792\");\nINSERT INTO Estudiante VALUES(793, \"Nombre793\");\nINSERT INTO Estudiante VALUES(794, \"Nombre794\");\nINSERT INTO Estudiante VALUES(795, \"Nombre795\");\nINSERT INTO Estudiante VALUES(796, \"Nombre796\");\nINSERT INTO Estudiante VALUES(797, \"Nombre797\");\nINSERT INTO Estudiante VALUES(798, \"Nombre798\");\nINSERT INTO Estudiante VALUES(799, \"Nombre799\");\nINSERT INTO Estudiante VALUES(800, \"Nombre800\");\nINSERT INTO Estudiante VALUES(801, \"Nombre801\");\nINSERT INTO Estudiante VALUES(802, \"Nombre802\");\nINSERT INTO Estudiante VALUES(803, \"Nombre803\");\nINSERT INTO Estudiante VALUES(804, \"Nombre804\");\nINSERT INTO Estudiante VALUES(805, \"Nombre805\");\nINSERT INTO Estudiante VALUES(806, \"Nombre806\");\nINSERT INTO Estudiante VALUES(807, \"Nombre807\");\nINSERT INTO Estudiante VALUES(808, \"Nombre808\");\nINSERT INTO Estudiante VALUES(809, \"Nombre809\");\nINSERT INTO Estudiante VALUES(810, \"Nombre810\");\nINSERT INTO Estudiante VALUES(811, \"Nombre811\");\nINSERT INTO Estudiante VALUES(812, \"Nombre812\");\nINSERT INTO Estudiante VALUES(813, \"Nombre813\");\nINSERT INTO Estudiante VALUES(814, \"Nombre814\");\nINSERT INTO Estudiante VALUES(815, \"Nombre815\");\nINSERT INTO Estudiante VALUES(816, \"Nombre816\");\nINSERT INTO Estudiante VALUES(817, \"Nombre817\");\nINSERT INTO Estudiante VALUES(818, \"Nombre818\");\nINSERT INTO Estudiante VALUES(819, \"Nombre819\");\nINSERT INTO Estudiante VALUES(820, \"Nombre820\");\nINSERT INTO Estudiante VALUES(821, \"Nombre821\");\nINSERT INTO Estudiante VALUES(822, \"Nombre822\");\nINSERT INTO Estudiante VALUES(823, \"Nombre823\");\nINSERT INTO Estudiante VALUES(824, \"Nombre824\");\nINSERT INTO Estudiante VALUES(825, \"Nombre825\");\nINSERT INTO Estudiante VALUES(826, \"Nombre826\");\nINSERT INTO Estudiante VALUES(827, \"Nombre827\");\nINSERT INTO Estudiante VALUES(828, \"Nombre828\");\nINSERT INTO Estudiante VALUES(829, \"Nombre829\");\nINSERT INTO Estudiante VALUES(830, \"Nombre830\");\nINSERT INTO Estudiante VALUES(831, \"Nombre831\");\nINSERT INTO Estudiante VALUES(832, \"Nombre832\");\nINSERT INTO Estudiante VALUES(833, \"Nombre833\");\nINSERT INTO Estudiante VALUES(834, \"Nombre834\");\nINSERT INTO Estudiante VALUES(835, \"Nombre835\");\nINSERT INTO Estudiante VALUES(836, \"Nombre836\");\nINSERT INTO Estudiante VALUES(837, \"Nombre837\");\nINSERT INTO Estudiante VALUES(838, \"Nombre838\");\nINSERT INTO Estudiante VALUES(839, \"Nombre839\");\nINSERT INTO Estudiante VALUES(840, \"Nombre840\");\nINSERT INTO Estudiante VALUES(841, \"Nombre841\");\nINSERT INTO Estudiante VALUES(842, \"Nombre842\");\nINSERT INTO Estudiante VALUES(843, \"Nombre843\");\nINSERT INTO Estudiante VALUES(844, \"Nombre844\");\nINSERT INTO Estudiante VALUES(845, \"Nombre845\");\nINSERT INTO Estudiante VALUES(846, \"Nombre846\");\nINSERT INTO Estudiante VALUES(847, \"Nombre847\");\nINSERT INTO Estudiante VALUES(848, \"Nombre848\");\nINSERT INTO Estudiante VALUES(849, \"Nombre849\");\nINSERT INTO Estudiante VALUES(850, \"Nombre850\");\nINSERT INTO Estudiante VALUES(851, \"Nombre851\");\nINSERT INTO Estudiante VALUES(852, \"Nombre852\");\nINSERT INTO Estudiante VALUES(853, \"Nombre853\");\nINSERT INTO Estudiante VALUES(854, \"Nombre854\");\nINSERT INTO Estudiante VALUES(855, \"Nombre855\");\nINSERT INTO Estudiante VALUES(856, \"Nombre856\");\nINSERT INTO Estudiante VALUES(857, \"Nombre857\");\nINSERT INTO Estudiante VALUES(858, \"Nombre858\");\nINSERT INTO Estudiante VALUES(859, \"Nombre859\");\nINSERT INTO Estudiante VALUES(860, \"Nombre860\");\nINSERT INTO Estudiante VALUES(861, \"Nombre861\");\nINSERT INTO Estudiante VALUES(862, \"Nombre862\");\nINSERT INTO Estudiante VALUES(863, \"Nombre863\");\nINSERT INTO Estudiante VALUES(864, \"Nombre864\");\nINSERT INTO Estudiante VALUES(865, \"Nombre865\");\nINSERT INTO Estudiante VALUES(866, \"Nombre866\");\nINSERT INTO Estudiante VALUES(867, \"Nombre867\");\nINSERT INTO Estudiante VALUES(868, \"Nombre868\");\nINSERT INTO Estudiante VALUES(869, \"Nombre869\");\nINSERT INTO Estudiante VALUES(870, \"Nombre870\");\nINSERT INTO Estudiante VALUES(871, \"Nombre871\");\nINSERT INTO Estudiante VALUES(872, \"Nombre872\");\nINSERT INTO Estudiante VALUES(873, \"Nombre873\");\nINSERT INTO Estudiante VALUES(874, \"Nombre874\");\nINSERT INTO Estudiante VALUES(875, \"Nombre875\");\nINSERT INTO Estudiante VALUES(876, \"Nombre876\");\nINSERT INTO Estudiante VALUES(877, \"Nombre877\");\nINSERT INTO Estudiante VALUES(878, \"Nombre878\");\nINSERT INTO Estudiante VALUES(879, \"Nombre879\");\nINSERT INTO Estudiante VALUES(880, \"Nombre880\");\nINSERT INTO Estudiante VALUES(881, \"Nombre881\");\nINSERT INTO Estudiante VALUES(882, \"Nombre882\");\nINSERT INTO Estudiante VALUES(883, \"Nombre883\");\nINSERT INTO Estudiante VALUES(884, \"Nombre884\");\nINSERT INTO Estudiante VALUES(885, \"Nombre885\");\nINSERT INTO Estudiante VALUES(886, \"Nombre886\");\nINSERT INTO Estudiante VALUES(887, \"Nombre887\");\nINSERT INTO Estudiante VALUES(888, \"Nombre888\");\nINSERT INTO Estudiante VALUES(889, \"Nombre889\");\nINSERT INTO Estudiante VALUES(890, \"Nombre890\");\nINSERT INTO Estudiante VALUES(891, \"Nombre891\");\nINSERT INTO Estudiante VALUES(892, \"Nombre892\");\nINSERT INTO Estudiante VALUES(893, \"Nombre893\");\nINSERT INTO Estudiante VALUES(894, \"Nombre894\");\nINSERT INTO Estudiante VALUES(895, \"Nombre895\");\nINSERT INTO Estudiante VALUES(896, \"Nombre896\");\nINSERT INTO Estudiante VALUES(897, \"Nombre897\");\nINSERT INTO Estudiante VALUES(898, \"Nombre898\");\nINSERT INTO Estudiante VALUES(899, \"Nombre899\");\nINSERT INTO Estudiante VALUES(900, \"Nombre900\");\nINSERT INTO Estudiante VALUES(901, \"Nombre901\");\nINSERT INTO Estudiante VALUES(902, \"Nombre902\");\nINSERT INTO Estudiante VALUES(903, \"Nombre903\");\nINSERT INTO Estudiante VALUES(904, \"Nombre904\");\nINSERT INTO Estudiante VALUES(905, \"Nombre905\");\nINSERT INTO Estudiante VALUES(906, \"Nombre906\");\nINSERT INTO Estudiante VALUES(907, \"Nombre907\");\nINSERT INTO Estudiante VALUES(908, \"Nombre908\");\nINSERT INTO Estudiante VALUES(909, \"Nombre909\");\nINSERT INTO Estudiante VALUES(910, \"Nombre910\");\nINSERT INTO Estudiante VALUES(911, \"Nombre911\");\nINSERT INTO Estudiante VALUES(912, \"Nombre912\");\nINSERT INTO Estudiante VALUES(913, \"Nombre913\");\nINSERT INTO Estudiante VALUES(914, \"Nombre914\");\nINSERT INTO Estudiante VALUES(915, \"Nombre915\");\nINSERT INTO Estudiante VALUES(916, \"Nombre916\");\nINSERT INTO Estudiante VALUES(917, \"Nombre917\");\nINSERT INTO Estudiante VALUES(918, \"Nombre918\");\nINSERT INTO Estudiante VALUES(919, \"Nombre919\");\nINSERT INTO Estudiante VALUES(920, \"Nombre920\");\nINSERT INTO Estudiante VALUES(921, \"Nombre921\");\nINSERT INTO Estudiante VALUES(922, \"Nombre922\");\nINSERT INTO Estudiante VALUES(923, \"Nombre923\");\nINSERT INTO Estudiante VALUES(924, \"Nombre924\");\nINSERT INTO Estudiante VALUES(925, \"Nombre925\");\nINSERT INTO Estudiante VALUES(926, \"Nombre926\");\nINSERT INTO Estudiante VALUES(927, \"Nombre927\");\nINSERT INTO Estudiante VALUES(928, \"Nombre928\");\nINSERT INTO Estudiante VALUES(929, \"Nombre929\");\nINSERT INTO Estudiante VALUES(930, \"Nombre930\");\nINSERT INTO Estudiante VALUES(931, \"Nombre931\");\nINSERT INTO Estudiante VALUES(932, \"Nombre932\");\nINSERT INTO Estudiante VALUES(933, \"Nombre933\");\nINSERT INTO Estudiante VALUES(934, \"Nombre934\");\nINSERT INTO Estudiante VALUES(935, \"Nombre935\");\nINSERT INTO Estudiante VALUES(936, \"Nombre936\");\nINSERT INTO Estudiante VALUES(937, \"Nombre937\");\nINSERT INTO Estudiante VALUES(938, \"Nombre938\");\nINSERT INTO Estudiante VALUES(939, \"Nombre939\");\nINSERT INTO Estudiante VALUES(940, \"Nombre940\");\nINSERT INTO Estudiante VALUES(941, \"Nombre941\");\nINSERT INTO Estudiante VALUES(942, \"Nombre942\");\nINSERT INTO Estudiante VALUES(943, \"Nombre943\");\nINSERT INTO Estudiante VALUES(944, \"Nombre944\");\nINSERT INTO Estudiante VALUES(945, \"Nombre945\");\nINSERT INTO Estudiante VALUES(946, \"Nombre946\");\nINSERT INTO Estudiante VALUES(947, \"Nombre947\");\nINSERT INTO Estudiante VALUES(948, \"Nombre948\");\nINSERT INTO Estudiante VALUES(949, \"Nombre949\");\nINSERT INTO Estudiante VALUES(950, \"Nombre950\");\nINSERT INTO Estudiante VALUES(951, \"Nombre951\");\nINSERT INTO Estudiante VALUES(952, \"Nombre952\");\nINSERT INTO Estudiante VALUES(953, \"Nombre953\");\nINSERT INTO Estudiante VALUES(954, \"Nombre954\");\nINSERT INTO Estudiante VALUES(955, \"Nombre955\");\nINSERT INTO Estudiante VALUES(956, \"Nombre956\");\nINSERT INTO Estudiante VALUES(957, \"Nombre957\");\nINSERT INTO Estudiante VALUES(958, \"Nombre958\");\nINSERT INTO Estudiante VALUES(959, \"Nombre959\");\nINSERT INTO Estudiante VALUES(960, \"Nombre960\");\nINSERT INTO Estudiante VALUES(961, \"Nombre961\");\nINSERT INTO Estudiante VALUES(962, \"Nombre962\");\nINSERT INTO Estudiante VALUES(963, \"Nombre963\");\nINSERT INTO Estudiante VALUES(964, \"Nombre964\");\nINSERT INTO Estudiante VALUES(965, \"Nombre965\");\nINSERT INTO Estudiante VALUES(966, \"Nombre966\");\nINSERT INTO Estudiante VALUES(967, \"Nombre967\");\nINSERT INTO Estudiante VALUES(968, \"Nombre968\");\nINSERT INTO Estudiante VALUES(969, \"Nombre969\");\nINSERT INTO Estudiante VALUES(970, \"Nombre970\");\nINSERT INTO Estudiante VALUES(971, \"Nombre971\");\nINSERT INTO Estudiante VALUES(972, \"Nombre972\");\nINSERT INTO Estudiante VALUES(973, \"Nombre973\");\nINSERT INTO Estudiante VALUES(974, \"Nombre974\");\nINSERT INTO Estudiante VALUES(975, \"Nombre975\");\nINSERT INTO Estudiante VALUES(976, \"Nombre976\");\nINSERT INTO Estudiante VALUES(977, \"Nombre977\");\nINSERT INTO Estudiante VALUES(978, \"Nombre978\");\nINSERT INTO Estudiante VALUES(979, \"Nombre979\");\nINSERT INTO Estudiante VALUES(980, \"Nombre980\");\nINSERT INTO Estudiante VALUES(981, \"Nombre981\");\nINSERT INTO Estudiante VALUES(982, \"Nombre982\");\nINSERT INTO Estudiante VALUES(983, \"Nombre983\");\nINSERT INTO Estudiante VALUES(984, \"Nombre984\");\nINSERT INTO Estudiante VALUES(985, \"Nombre985\");\nINSERT INTO Estudiante VALUES(986, \"Nombre986\");\nINSERT INTO Estudiante VALUES(987, \"Nombre987\");\nINSERT INTO Estudiante VALUES(988, \"Nombre988\");\nINSERT INTO Estudiante VALUES(989, \"Nombre989\");\nINSERT INTO Estudiante VALUES(990, \"Nombre990\");\nINSERT INTO Estudiante VALUES(991, \"Nombre991\");\nINSERT INTO Estudiante VALUES(992, \"Nombre992\");\nINSERT INTO Estudiante VALUES(993, \"Nombre993\");\nINSERT INTO Estudiante VALUES(994, \"Nombre994\");\nINSERT INTO Estudiante VALUES(995, \"Nombre995\");\nINSERT INTO Estudiante VALUES(996, \"Nombre996\");\nINSERT INTO Estudiante VALUES(997, \"Nombre997\");\nINSERT INTO Estudiante VALUES(998, \"Nombre998\");\nINSERT INTO Estudiante VALUES(999, \"Nombre999\");\nINSERT INTO Estudiante VALUES(1000, \"Nombre1000\");\nCREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;\n\nSELECT * FROM Estudiante WHERE ID = 900;\nSELECT * FROM Estudiante WHERE ID = 901;\nSELECT * FROM Estudiante WHERE ID = 902;\nSELECT * FROM Estudiante WHERE ID = 903;\nSELECT * FROM Estudiante WHERE ID = 904;\nSELECT * FROM Estudiante WHERE ID = 905;\nSELECT * FROM Estudiante WHERE ID = 906;\nSELECT * FROM Estudiante WHERE ID = 907;\nSELECT * FROM Estudiante WHERE ID = 908;\nSELECT * FROM Estudiante WHERE ID = 909;\nSELECT * FROM Estudiante WHERE ID = 910;\nSELECT * FROM Estudiante WHERE ID = 911;\nSELECT * FROM Estudiante WHERE ID = 912;\nSELECT * FROM Estudiante WHERE ID = 913;\nSELECT * FROM Estudiante WHERE ID = 914;\nSELECT * FROM Estudiante WHERE ID = 915;\nSELECT * FROM Estudiante WHERE ID = 916;\nSELECT * FROM Estudiante WHERE ID = 917;\nSELECT * FROM Estudiante WHERE ID = 918;\nSELECT * FROM Estudiante WHERE ID = 919;\nSELECT * FROM Estudiante WHERE ID = 920;\nSELECT * FROM Estudiante WHERE ID = 921;\nSELECT * FROM Estudiante WHERE ID = 922;\nSELECT * FROM Estudiante WHERE ID = 923;\nSELECT * FROM Estudiante WHERE ID = 924;\nSELECT * FROM Estudiante WHERE ID = 925;\nSELECT * FROM Estudiante WHERE ID = 926;\nSELECT * FROM Estudiante WHERE ID = 927;\nSELECT * FROM Estudiante WHERE ID = 928;\nSELECT * FROM Estudiante WHERE ID = 929;\nSELECT * FROM Estudiante WHERE ID = 930;\nSELECT * FROM Estudiante WHERE ID = 931;\nSELECT * FROM Estudiante WHERE ID = 932;\nSELECT * FROM Estudiante WHERE ID = 933;\nSELECT * FROM Estudiante WHERE ID = 934;\nSELECT * FROM Estudiante WHERE ID = 935;\nSELECT * FROM Estudiante WHERE ID = 936;\nSELECT * FROM Estudiante WHERE ID = 937;\nSELECT * FROM Estudiante WHERE ID = 938;\nSELECT * FROM Estudiante WHERE ID = 939;\nSELECT * FROM Estudiante WHERE ID = 940;\nSELECT * FROM Estudiante WHERE ID = 941;\nSELECT * FROM Estudiante WHERE ID = 942;\nSELECT * FROM Estudiante WHERE ID = 943;\nSELECT * FROM Estudiante WHERE ID = 944;\nSELECT * FROM Estudiante WHERE ID = 945;\nSELECT * FROM Estudiante WHERE ID = 946;\nSELECT * FROM Estudiante WHERE ID = 947;\nSELECT * FROM Estudiante WHERE ID = 948;\nSELECT * FROM Estudiante WHERE ID = 999;\n",
-      "statementCount": 1054
-  }
+    scenario({
+        id: "crud-completo",
+        title: "CRUD completo",
+        category: "Success Path",
+        sourceFile: "scripts/success/01_crud_fase_f.sql",
+        description:
+            "Crea base, crea tabla, inserta registros, consulta, actualiza, elimina y prueba DROP TABLE.",
+        expectedBehavior:
+            "Todas las operaciones deben completarse correctamente. Cubre CREATE DATABASE, SET DATABASE, CREATE TABLE, INSERT, SELECT, UPDATE, DELETE, ORDER BY y DROP TABLE.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE FaseFSuccess;
+SET DATABASE FaseFSuccess;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL,
+  Nota DOUBLE NULL,
+  FechaNacimiento DATETIME NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac", 90.5, "2000-01-01 01:02:00");
+INSERT INTO Estudiante VALUES(2, "Juan", 75.0, "2000-01-02 01:02:00");
+INSERT INTO Estudiante VALUES(3, "Pedro", 88.0, "2000-01-03 01:02:00");
+
+SELECT * FROM Estudiante;
+
+SELECT Nombre FROM Estudiante WHERE ID = 2;
+
+SELECT * FROM Estudiante ORDER BY Nombre ASC;
+
+UPDATE Estudiante SET Nombre = "Felipe" WHERE ID = 1;
+
+SELECT * FROM Estudiante WHERE ID = 1;
+
+DELETE FROM Estudiante WHERE ID = 2;
+
+SELECT * FROM Estudiante ORDER BY ID ASC;
+
+UPDATE Estudiante SET Nombre = "Todos";
+
+SELECT * FROM Estudiante;
+
+DELETE FROM Estudiante;
+
+SELECT * FROM Estudiante;
+
+DROP TABLE Estudiante;`,
+    }),
+
+    scenario({
+        id: "system-catalog",
+        title: "System Catalog",
+        category: "Metadata",
+        sourceFile: "scripts/success/02_system_catalog.sql",
+        description:
+            "Consulta SystemDatabases, SystemTables, SystemColumns y SystemIndexes.",
+        expectedBehavior:
+            "Debe mostrar metadata registrada en el catálogo del sistema y permitir SELECT sobre los catálogos.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE CatalogSuccess;
+SET DATABASE CatalogSuccess;
+
+CREATE TABLE Curso AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(40) NOT NULL,
+  Creditos INTEGER NULL
+);
+
+CREATE TABLE Profesor AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(40) NOT NULL
+);
+
+SELECT * FROM SystemDatabases;
+
+SELECT * FROM SystemTables;
+
+SELECT * FROM SystemColumns;
+
+SELECT * FROM SystemIndexes;
+
+SELECT TableName FROM SystemTables WHERE TableName = "Curso";
+
+SELECT ColumnName, DataType FROM SystemColumns WHERE TableName = "Curso";
+
+SELECT * FROM SystemColumns ORDER BY ColumnOrder ASC;`,
+    }),
+
+    scenario({
+        id: "tipos-datetime-varchar",
+        title: "Tipos INTEGER, DOUBLE, VARCHAR y DATETIME",
+        category: "Success Path",
+        sourceFile: "scripts/success/09_data_types_datetime.sql",
+        description:
+            "Prueba los tipos requeridos por el enunciado y el parseo interno de DATETIME desde texto.",
+        expectedBehavior:
+            "Debe insertar y consultar INTEGER, DOUBLE, VARCHAR y DATETIME correctamente.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE DataTypesSuccess;
+SET DATABASE DataTypesSuccess;
+
+CREATE TABLE Evento AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(25) NOT NULL,
+  Puntaje DOUBLE NULL,
+  Fecha DATETIME NOT NULL
+);
+
+INSERT INTO Evento VALUES(1, "Inicio", 10.5, "2026-06-27 08:30:00");
+INSERT INTO Evento VALUES(2, "Final", 20.75, "2026-06-27 10:45:30");
+
+SELECT * FROM Evento;
+
+SELECT * FROM Evento WHERE Fecha > "2026-06-27 09:00:00";
+
+SELECT * FROM Evento ORDER BY Fecha DESC;`,
+    }),
+
+    scenario({
+        id: "where-like-not-orderby",
+        title: "WHERE, LIKE, NOT y ORDER BY",
+        category: "Query Features",
+        sourceFile: "scripts/success/10_where_like_not_orderby.sql",
+        description:
+            "Valida operadores de comparación del WHERE, patrón LIKE con * y ordenamiento con Quicksort.",
+        expectedBehavior:
+            "LIKE debe filtrar textos con el patrón indicado; NOT debe excluir el valor indicado; ORDER BY debe ordenar ASC y DESC.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE WhereLikeSuccess;
+SET DATABASE WhereLikeSuccess;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL,
+  Nota DOUBLE NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac", 90.5);
+INSERT INTO Estudiante VALUES(2, "Juan", 80.0);
+INSERT INTO Estudiante VALUES(3, "Pedro", 70.0);
+INSERT INTO Estudiante VALUES(4, "Ana", 95.0);
+INSERT INTO Estudiante VALUES(5, "Mariana", 88.0);
+
+SELECT * FROM Estudiante WHERE Nombre LIKE *an* ORDER BY Nombre ASC;
+
+SELECT * FROM Estudiante WHERE ID NOT 3 ORDER BY ID ASC;
+
+SELECT * FROM Estudiante WHERE Nota > 80.0 ORDER BY Nota DESC;
+
+SELECT * FROM Estudiante WHERE ID < 4 ORDER BY ID DESC;`,
+    }),
+
+    scenario({
+        id: "drop-table-valido",
+        title: "DROP TABLE válido",
+        category: "Success Path",
+        sourceFile: "scripts/success/03_drop_table.sql",
+        description: "Valida eliminación de tabla cuando está vacía.",
+        expectedBehavior:
+            "DROP TABLE debe ejecutarse correctamente cuando la tabla no tiene registros activos.",
+        heavy: false,
+        errorScenario: false,
+        recommended: false,
+        script: `CREATE DATABASE DropSuccess;
+SET DATABASE DropSuccess;
+
+CREATE TABLE Curso AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Curso VALUES(1, "Bases");
+
+DELETE FROM Curso;
+
+DROP TABLE Curso;
+
+SELECT * FROM SystemTables;`,
+    }),
+
+    scenario({
+        id: "indice-bst",
+        title: "Índice BST",
+        category: "Index Validation",
+        sourceFile: "scripts/success/04_index_bst.sql",
+        description:
+            "Crea índice BST, consulta por columna indexada y valida consistencia con INSERT, UPDATE y DELETE.",
+        expectedBehavior:
+            "Las consultas por columna indexada deben ejecutarse correctamente y el índice BST debe permanecer consistente.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE IndexBstSuccess;
+SET DATABASE IndexBstSuccess;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+INSERT INTO Estudiante VALUES(3, "Pedro");
+INSERT INTO Estudiante VALUES(4, "Ana");
+INSERT INTO Estudiante VALUES(5, "Luis");
+
+CREATE INDEX IDX_Estudiante_ID_BST ON Estudiante(ID) OF TYPE BST;
+
+SELECT * FROM Estudiante WHERE ID = 3;
+
+SELECT * FROM Estudiante WHERE ID > 3;
+
+SELECT * FROM Estudiante WHERE ID < 3;
+
+INSERT INTO Estudiante VALUES(6, "Maria");
+
+SELECT * FROM Estudiante WHERE ID = 6;
+
+UPDATE Estudiante SET ID = 20 WHERE ID = 2;
+
+SELECT * FROM Estudiante WHERE ID = 2;
+
+SELECT * FROM Estudiante WHERE ID = 20;
+
+DELETE FROM Estudiante WHERE ID = 20;
+
+SELECT * FROM Estudiante WHERE ID = 20;
+
+SELECT * FROM SystemIndexes;`,
+    }),
+
+    scenario({
+        id: "indice-btree",
+        title: "Índice BTREE",
+        category: "Index Validation",
+        sourceFile: "scripts/success/05_index_btree.sql",
+        description:
+            "Crea índice BTREE, consulta por columna indexada y valida consistencia con INSERT, UPDATE y DELETE.",
+        expectedBehavior:
+            "Las consultas por columna indexada deben ejecutarse correctamente y el índice BTREE debe permanecer consistente.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE IndexBTreeSuccess;
+SET DATABASE IndexBTreeSuccess;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+INSERT INTO Estudiante VALUES(3, "Pedro");
+INSERT INTO Estudiante VALUES(4, "Ana");
+INSERT INTO Estudiante VALUES(5, "Luis");
+INSERT INTO Estudiante VALUES(6, "Maria");
+INSERT INTO Estudiante VALUES(7, "Sofia");
+INSERT INTO Estudiante VALUES(8, "Carlos");
+
+CREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;
+
+SELECT * FROM Estudiante WHERE ID = 4;
+
+SELECT * FROM Estudiante WHERE ID > 5;
+
+SELECT * FROM Estudiante WHERE ID < 3;
+
+INSERT INTO Estudiante VALUES(9, "Nuevo");
+
+SELECT * FROM Estudiante WHERE ID = 9;
+
+UPDATE Estudiante SET ID = 40 WHERE ID = 4;
+
+SELECT * FROM Estudiante WHERE ID = 4;
+
+SELECT * FROM Estudiante WHERE ID = 40;
+
+DELETE FROM Estudiante WHERE ID = 40;
+
+SELECT * FROM Estudiante WHERE ID = 40;
+
+SELECT * FROM SystemIndexes;`,
+    }),
+
+    scenario({
+        id: "update-delete-con-indices",
+        title: "UPDATE y DELETE usando índice",
+        category: "Index Validation",
+        sourceFile: "scripts/success/07_update_delete_with_indexes.sql",
+        description:
+            "Crea índice BTREE sobre ID, actualiza con WHERE indexado, elimina con WHERE indexado y valida consistencia.",
+        expectedBehavior:
+            "UPDATE y DELETE deben usar índice cuando el WHERE apunta a ID, y después el índice debe seguir consistente.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE UpdateDeleteIndexSuccess;
+SET DATABASE UpdateDeleteIndexSuccess;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+INSERT INTO Estudiante VALUES(3, "Pedro");
+INSERT INTO Estudiante VALUES(4, "Ana");
+
+CREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;
+
+SELECT * FROM Estudiante WHERE ID = 2;
+
+UPDATE Estudiante SET Nombre = "Actualizado" WHERE ID = 2;
+
+SELECT * FROM Estudiante WHERE ID = 2;
+
+DELETE FROM Estudiante WHERE ID = 2;
+
+SELECT * FROM Estudiante WHERE ID = 2;
+
+SELECT * FROM Estudiante ORDER BY ID ASC;`,
+    }),
+
+    scenario({
+        id: "multiples-indices-columnas-distintas",
+        title: "Múltiples índices en columnas distintas",
+        category: "Index Validation",
+        sourceFile: "scripts/success/08_multiple_indexes_different_columns.sql",
+        description:
+            "Valida la interpretación de un índice por columna: una tabla puede tener varios índices si cada uno apunta a una columna distinta.",
+        expectedBehavior:
+            "Debe crear índice BTREE sobre ID y BST sobre Nombre. Las consultas por ambas columnas deben funcionar y SystemIndexes debe mostrar ambos.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE MultipleIndexSuccess;
+SET DATABASE MultipleIndexSuccess;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL,
+  Nota DOUBLE NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac", 90.5);
+INSERT INTO Estudiante VALUES(2, "Juan", 80.0);
+INSERT INTO Estudiante VALUES(3, "Pedro", 70.0);
+INSERT INTO Estudiante VALUES(4, "Ana", 95.0);
+
+CREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;
+
+CREATE INDEX IDX_Estudiante_Nombre_BST ON Estudiante(Nombre) OF TYPE BST;
+
+SELECT * FROM Estudiante WHERE ID = 3;
+
+SELECT * FROM Estudiante WHERE Nombre = "Ana";
+
+INSERT INTO Estudiante VALUES(5, "Luis", 88.0);
+
+SELECT * FROM Estudiante WHERE ID = 5;
+
+SELECT * FROM Estudiante WHERE Nombre = "Luis";
+
+SELECT * FROM SystemIndexes;`,
+    }),
+
+    scenario({
+        id: "almacenamiento-cifrado",
+        title: "Almacenamiento cifrado",
+        category: "Storage",
+        sourceFile: "scripts/success/06_encrypted_storage.sql",
+        description:
+            "Valida operaciones sobre tabla almacenada en archivos binarios cifrados: INSERT, SELECT, UPDATE, DELETE, CREATE INDEX y consulta con índice.",
+        expectedBehavior:
+            "Las consultas deben funcionar desde el frontend. La verificación directa de cifrado se hace inspeccionando el archivo .tbl fuera del navegador.",
+        heavy: false,
+        errorScenario: false,
+        recommended: true,
+        script: `CREATE DATABASE EncryptionSuccess;
+SET DATABASE EncryptionSuccess;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL,
+  Nota DOUBLE NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac", 90.5);
+INSERT INTO Estudiante VALUES(2, "Juan", 80.0);
+INSERT INTO Estudiante VALUES(3, "Pedro", 70.0);
+
+SELECT * FROM Estudiante;
+
+UPDATE Estudiante SET Nombre = "Felipe" WHERE ID = 1;
+
+SELECT * FROM Estudiante WHERE ID = 1;
+
+DELETE FROM Estudiante WHERE ID = 2;
+
+SELECT * FROM Estudiante ORDER BY ID ASC;
+
+CREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;
+
+SELECT * FROM Estudiante WHERE ID = 3;
+
+INSERT INTO Estudiante VALUES(4, "Ana", 95.0);
+
+SELECT * FROM Estudiante WHERE ID = 4;
+
+SELECT * FROM SystemIndexes;`,
+    }),
+
+    scenario({
+        id: "error-base-duplicada",
+        title: "Error: base duplicada",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/09_duplicate_database.sql",
+        description:
+            "Valida que CREATE DATABASE rechace crear dos bases con el mismo nombre.",
+        expectedBehavior:
+            "La segunda sentencia CREATE DATABASE debe fallar por duplicado.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE DatabaseDuplicateError;
+
+CREATE DATABASE DatabaseDuplicateError;`,
+    }),
+
+    scenario({
+        id: "error-set-database-no-existe",
+        title: "Error: SET DATABASE inexistente",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/10_set_database_not_found.sql",
+        description:
+            "Valida que SET DATABASE solo establezca contexto si la base existe.",
+        expectedBehavior:
+            "SET DATABASE debe fallar porque la base no existe.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `SET DATABASE BaseQueNoExiste;`,
+    }),
+
+    scenario({
+        id: "error-create-table-duplicada",
+        title: "Error: tabla duplicada",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/11_duplicate_table.sql",
+        description:
+            "Valida que CREATE TABLE no permita crear dos tablas con el mismo nombre en la misma base.",
+        expectedBehavior:
+            "El segundo CREATE TABLE debe fallar por tabla duplicada.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE DuplicateTableError;
+SET DATABASE DuplicateTableError;
+
+CREATE TABLE Curso AS (
+  ID INTEGER NOT NULL
+);
+
+CREATE TABLE Curso AS (
+  ID INTEGER NOT NULL
+);`,
+    }),
+
+    scenario({
+        id: "error-insert-tipo-invalido",
+        title: "Error: INSERT con tipo inválido",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/01_insert_errors.sql",
+        description:
+            "Valida que INSERT rechace un valor que no coincide con el tipo INTEGER.",
+        expectedBehavior:
+            "El INSERT debe fallar porque ID espera INTEGER y recibe texto.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE InsertTypeError;
+SET DATABASE InsertTypeError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(10) NOT NULL,
+  Nota DOUBLE NULL,
+  FechaNacimiento DATETIME NULL
+);
+
+INSERT INTO Estudiante VALUES("uno", "Isaac", 90.5, "2000-01-01 01:02:00");`,
+    }),
+
+    scenario({
+        id: "error-insert-varchar-largo",
+        title: "Error: VARCHAR excede longitud",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/12_varchar_length.sql",
+        description:
+            "Valida que VARCHAR(length) sea de tamaño máximo fijo.",
+        expectedBehavior:
+            "El INSERT debe fallar porque Nombre supera VARCHAR(10).",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE VarcharLengthError;
+SET DATABASE VarcharLengthError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(10) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "NombreDemasiadoLargo");`,
+    }),
+
+    scenario({
+        id: "error-insert-not-null",
+        title: "Error: NOT NULL violado",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/13_not_null.sql",
+        description:
+            "Valida que una columna NOT NULL no acepte NULL.",
+        expectedBehavior:
+            "El INSERT debe fallar porque Nombre es NOT NULL.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE NotNullError;
+SET DATABASE NotNullError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(10) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, NULL);`,
+    }),
+
+    scenario({
+        id: "error-insert-cantidad-valores",
+        title: "Error: cantidad incorrecta de valores",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/14_insert_value_count.sql",
+        description:
+            "Valida que INSERT reciba los valores en el orden y cantidad de columnas creadas.",
+        expectedBehavior:
+            "El INSERT debe fallar porque faltan valores.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE InsertCountError;
+SET DATABASE InsertCountError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(10) NOT NULL,
+  Nota DOUBLE NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");`,
+    }),
+
+    scenario({
+        id: "errores-consulta",
+        title: "Errores de consulta",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/02_query_errors.sql",
+        description:
+            "Valida errores semánticos sobre columnas, tablas y operaciones inválidas.",
+        expectedBehavior:
+            "Debe fallar en la primera consulta inválida sin romper el cliente.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE QueryErrors;
+SET DATABASE QueryErrors;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(20) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+
+SELECT Edad FROM Estudiante;`,
+    }),
+
+    scenario({
+        id: "drop-table-no-vacia",
+        title: "DROP TABLE con tabla no vacía",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/03_drop_table_not_empty.sql",
+        description:
+            "Valida que DROP TABLE falle si la tabla tiene registros activos.",
+        expectedBehavior:
+            "DROP TABLE debe fallar mientras existan registros activos en la tabla.",
+        heavy: false,
+        errorScenario: true,
+        recommended: true,
+        script: `CREATE DATABASE DropError;
+SET DATABASE DropError;
+
+CREATE TABLE Curso AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Curso VALUES(1, "Bases");
+
+DROP TABLE Curso;`,
+    }),
+
+    scenario({
+        id: "indice-valores-duplicados",
+        title: "Índice sobre valores duplicados",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/04_index_duplicate_values.sql",
+        description:
+            "Valida que no se cree índice sobre una columna que ya tiene valores repetidos.",
+        expectedBehavior:
+            "CREATE INDEX debe fallar si la columna tiene duplicados.",
+        heavy: false,
+        errorScenario: true,
+        recommended: true,
+        script: `CREATE DATABASE IndexDuplicateError;
+SET DATABASE IndexDuplicateError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(1, "Juan");
+
+CREATE INDEX IDX_Estudiante_ID_BST ON Estudiante(ID) OF TYPE BST;`,
+    }),
+
+    scenario({
+        id: "insercion-duplicada-indexada",
+        title: "INSERT duplicado en columna indexada",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/05_index_insert_duplicate.sql",
+        description:
+            "Valida que después de crear un índice no se permitan valores duplicados en esa columna.",
+        expectedBehavior:
+            "El INSERT duplicado debe fallar después de crear el índice.",
+        heavy: false,
+        errorScenario: true,
+        recommended: true,
+        script: `CREATE DATABASE IndexInsertDuplicateError;
+SET DATABASE IndexInsertDuplicateError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+
+CREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;
+
+INSERT INTO Estudiante VALUES(2, "Duplicado");`,
+    }),
+
+    scenario({
+        id: "indice-columna-invalida",
+        title: "Índice sobre columna inválida",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/06_index_invalid_column.sql",
+        description:
+            "Valida error al intentar crear índice sobre una columna inexistente.",
+        expectedBehavior:
+            "CREATE INDEX debe fallar si la columna no existe.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE IndexInvalidColumnError;
+SET DATABASE IndexInvalidColumnError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+CREATE INDEX IDX_Estudiante_Edad ON Estudiante(Edad) OF TYPE BST;`,
+    }),
+
+    scenario({
+        id: "indice-duplicado-misma-columna",
+        title: "Restricción de un índice por columna",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/08_duplicate_index_same_column.sql",
+        description:
+            "Valida que no se puedan crear dos índices sobre la misma columna, aunque sean de tipos distintos.",
+        expectedBehavior:
+            "Debe fallar en el segundo CREATE INDEX porque la columna ID ya tiene un índice.",
+        heavy: false,
+        errorScenario: true,
+        recommended: true,
+        script: `CREATE DATABASE DuplicateIndexColumnError;
+SET DATABASE DuplicateIndexColumnError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+
+CREATE INDEX IDX_ID_BST ON Estudiante(ID) OF TYPE BST;
+
+CREATE INDEX IDX_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;`,
+    }),
+
+    scenario({
+        id: "update-duplicado-columna-indexada",
+        title: "Error: UPDATE duplicaría columna indexada",
+        category: "Error Handling",
+        sourceFile: "scripts/errors/15_update_duplicate_indexed_column.sql",
+        description:
+            "Valida que UPDATE no pueda producir duplicados en una columna indexada.",
+        expectedBehavior:
+            "El UPDATE debe fallar porque intentaría cambiar ID = 2 a ID = 1.",
+        heavy: false,
+        errorScenario: true,
+        recommended: true,
+        script: `CREATE DATABASE UpdateDuplicateIndexedError;
+SET DATABASE UpdateDuplicateIndexedError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+
+CREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;
+
+UPDATE Estudiante SET ID = 1 WHERE ID = 2;`,
+    }),
+
+    scenario({
+        id: "integridad-cifrado",
+        title: "Integridad de almacenamiento cifrado",
+        category: "Storage",
+        sourceFile: "scripts/errors/07_encrypted_storage_integrity.sql",
+        description:
+            "Valida que un índice sobre datos almacenados cifrados mantenga la restricción de duplicados.",
+        expectedBehavior:
+            "El último INSERT debe fallar porque ID = 2 ya existe en la columna indexada.",
+        heavy: false,
+        errorScenario: true,
+        recommended: false,
+        script: `CREATE DATABASE EncryptionError;
+SET DATABASE EncryptionError;
+
+CREATE TABLE Estudiante AS (
+  ID INTEGER NOT NULL,
+  Nombre VARCHAR(30) NOT NULL
+);
+
+INSERT INTO Estudiante VALUES(1, "Isaac");
+INSERT INTO Estudiante VALUES(2, "Juan");
+
+CREATE INDEX IDX_Estudiante_ID_BTREE ON Estudiante(ID) OF TYPE BTREE;
+
+INSERT INTO Estudiante VALUES(2, "Duplicado");`,
+    }),
+
+    scenario({
+        id: "benchmark-sin-indice",
+        title: "Benchmark sin índice",
+        category: "Performance",
+        sourceFile: "scripts/benchmarks/01_select_without_index.sql",
+        description:
+            "Carga 1000 registros y ejecuta 50 consultas SELECT por igualdad sin índice.",
+        expectedBehavior:
+            "Debe servir como línea base de búsqueda secuencial. Comparar principalmente el promedio de SELECT, no el tiempo total del script.",
+        heavy: true,
+        errorScenario: false,
+        recommended: true,
+        script: buildBenchmarkScript("BenchmarkNoIndex", null),
+    }),
+
+    scenario({
+        id: "benchmark-bst",
+        title: "Benchmark con BST",
+        category: "Performance",
+        sourceFile: "scripts/benchmarks/02_select_with_bst.sql",
+        description:
+            "Carga 1000 registros, crea índice BST y ejecuta 50 consultas SELECT por igualdad sobre la columna indexada.",
+        expectedBehavior:
+            "Debe mejorar contra la búsqueda secuencial. Comparar principalmente promedio SELECT y SELECT final.",
+        heavy: true,
+        errorScenario: false,
+        recommended: true,
+        script: buildBenchmarkScript("BenchmarkBST", "BST"),
+    }),
+
+    scenario({
+        id: "benchmark-btree",
+        title: "Benchmark con BTREE",
+        category: "Performance",
+        sourceFile: "scripts/benchmarks/03_select_with_btree.sql",
+        description:
+            "Carga 1000 registros, crea índice BTREE y ejecuta 50 consultas SELECT por igualdad sobre la columna indexada.",
+        expectedBehavior:
+            "Debe mejorar contra la búsqueda secuencial. Comparar principalmente promedio SELECT y SELECT final.",
+        heavy: true,
+        errorScenario: false,
+        recommended: true,
+        script: buildBenchmarkScript("BenchmarkBTree", "BTREE"),
+    }),
 ];
 
-export const scenarioCategories = Array.from(new Set(demoScenarios.map((scenario) => scenario.category))).sort();
+export const scenarioCategories = Array.from(
+    new Set(demoScenarios.map((scenario) => scenario.category))
+).sort();
 
 export const recommendedScenarioIds = demoScenarios
-  .filter((scenario) => scenario.recommended)
-  .map((scenario) => scenario.id);
+    .filter((scenario) => scenario.recommended)
+    .map((scenario) => scenario.id);
 
 export function findScenarioById(id) {
-  return demoScenarios.find((scenario) => scenario.id === id) ?? null;
+    return demoScenarios.find((scenario) => scenario.id === id) ?? null;
 }

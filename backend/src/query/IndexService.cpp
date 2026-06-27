@@ -162,12 +162,14 @@ namespace tinysql
             {
                 if (
                     existingIndex.index.getTableName() ==
-                    statement.tableName
+                    statement.tableName &&
+                    existingIndex.index.getColumnName() ==
+                    statement.columnName
                     )
                 {
                     return QueryResult::failure(
                         ErrorCode::DuplicateValue,
-                        "Ya existe un indice para esta tabla. Solo se permite un indice a la vez por tabla."
+                        "Ya existe un indice para esa columna."
                     );
                 }
             }
